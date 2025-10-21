@@ -1,0 +1,63 @@
+[tool.poetry]
+name = "llm4se-03-backend"
+version = "1.0.0"
+description = "AI Travel Planner Backend API - 基于FastAPI和AG-UI协议"
+authors = ["Krisdar 652025320008@smail.nju.edu.cn"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.110.0"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+sqlalchemy = "^2.0.25"
+alembic = "^1.13.1"
+pydantic = "^2.6.1"
+pydantic-settings = "^2.1.0"
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+python-multipart = "^0.0.9"
+slowapi = "^0.1.9"
+redis = "^5.0.0"
+httpx = "^0.26.0"
+psycopg2-binary = "^2.9.9"
+python-dotenv = "^1.0.0"
+email-validator = "^2.3.0"
+bcrypt = ">=4.0.0"
+passlib = {version = ">=1.7.4", extras = ["bcrypt"]}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-asyncio = "^0.23.2"
+pytest-cov = "^4.1.0"
+black = "^24.1.1"
+ruff = "^0.2.0"
+mypy = "^1.8.0"
+
+[tool.poetry.scripts]
+dev = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+test = "pytest"
+test-cov = "pytest --cov=app --cov-report=html"
+migrate = "alembic upgrade head"
+migrate-create = "alembic revision --autogenerate"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+include = '\.pyi?$'
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+

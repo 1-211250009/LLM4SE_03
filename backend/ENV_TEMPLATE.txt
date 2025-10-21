@@ -1,0 +1,39 @@
+# 环境变量配置模板
+# 复制此文件为 .env 并填入真实值
+
+# 服务配置
+ENVIRONMENT=development
+PORT=8000
+HOST=0.0.0.0
+
+# 数据库配置
+DATABASE_URL=postgresql://admin:password@localhost:5432/travel_planner
+
+# Redis配置
+REDIS_URL=redis://localhost:6379
+
+# JWT配置（生产环境请更改）
+SECRET_KEY=your_secret_key_at_least_32_characters_change_this_in_production_please
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=10080
+REFRESH_TOKEN_EXPIRE_MINUTES=43200
+
+# 阿里云百炼平台
+ALIYUN_LLM_API_KEY=your_aliyun_llm_api_key_here
+ALIYUN_LLM_ENDPOINT=https://dashscope.aliyuncs.com/api/v1
+
+# 科大讯飞
+XFYUN_APP_ID=your_xfyun_app_id
+XFYUN_API_KEY=your_xfyun_api_key
+XFYUN_API_SECRET=your_xfyun_api_secret
+
+# 百度地图
+BAIDU_MAP_AK=your_baidu_map_ak
+BAIDU_MAP_SK=your_baidu_map_sk
+
+# CORS配置（JSON数组格式）
+CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
+
+# 日志配置
+LOG_LEVEL=INFO
+
