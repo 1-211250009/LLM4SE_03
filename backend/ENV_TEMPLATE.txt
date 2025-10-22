@@ -32,8 +32,8 @@ BAIDU_MAP_AK=your_baidu_map_ak
 BAIDU_MAP_SK=your_baidu_map_sk
 
 # CORS配置（JSON数组格式）
-CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
-
+CORS_ORIGINS=
+["http://localhost:5173","http://localhost:3000","http://localhost","http://localhost:80"]
 # 日志配置
 LOG_LEVEL=INFO
 
