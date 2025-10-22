@@ -15,15 +15,14 @@ alembic = "^1.13.1"
 pydantic = "^2.6.1"
 pydantic-settings = "^2.1.0"
 python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 python-multipart = "^0.0.9"
 slowapi = "^0.1.9"
 redis = "^5.0.0"
 httpx = "^0.26.0"
 psycopg2-binary = "^2.9.9"
 python-dotenv = "^1.0.0"
-email-validator = "^2.3.0"
-bcrypt = ">=4.0.0"
-passlib = {version = ">=1.7.4", extras = ["bcrypt"]}
+email-validator = "^2.2.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
