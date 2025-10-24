@@ -55,6 +55,18 @@ class User(Base):
         comment="URL to user avatar image"
     )
     
+    bio = Column(
+        String,
+        nullable=True,
+        comment="User biography/description"
+    )
+    
+    phone = Column(
+        String,
+        nullable=True,
+        comment="User phone number"
+    )
+    
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),

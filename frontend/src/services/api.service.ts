@@ -3,10 +3,9 @@ import { useAuthStore } from '../store/auth.store';
 
 // API 基础配置
 // - 生产环境(容器/Nginx)：同源 + Nginx 代理 `/api/`，避免 CORS
-// - 开发环境(vite)：可通过 VITE_API_BASE_URL 指向后端，例如 http://localhost:8000
-const API_PREFIX = '/api/v1';
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
-const RESOLVED_BASE_URL = API_BASE ? `${API_BASE}${API_PREFIX}` : `${API_PREFIX}`;
+// - 开发环境(vite)：指向Docker后端 http://localhost:8000
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const RESOLVED_BASE_URL = `${API_BASE_URL}/api/v1`;
 
 // 创建 axios 实例
 const apiClient: AxiosInstance = axios.create({

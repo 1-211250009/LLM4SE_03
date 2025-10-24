@@ -57,6 +57,54 @@ class TokenRefresh(BaseModel):
     refresh_token: str = Field(..., description="Refresh token")
 
 
+class UserProfileUpdate(BaseModel):
+    """User profile update request schema"""
+    
+    name: Optional[str] = Field(None, min_length=1, max_length=100, description="User display name")
+    bio: Optional[str] = Field(None, max_length=500, description="User biography")
+    phone: Optional[str] = Field(None, max_length=20, description="User phone number")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Zhang San",
+                "bio": "热爱旅行的程序员",
+                "phone": "+86 138 0013 8000"
+            }
+        }
+    )
+
+
+class PasswordChange(BaseModel):
+    """Password change request schema"""
+    
+    current_password: str = Field(..., description="Current password")
+    new_password: str = Field(..., min_length=6, max_length=100, description="New password")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "current_password": "oldpassword123",
+                "new_password": "newpassword123"
+            }
+        }
+    )
+
+
+class AvatarUploadResponse(BaseModel):
+    """Avatar upload response schema"""
+    
+    avatar_url: str = Field(..., description="Uploaded avatar URL")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "avatar_url": "https://example.com/avatars/user123.jpg"
+            }
+        }
+    )
+
+
 # ===== Response Schemas =====
 
 class UserOut(BaseModel):
@@ -66,7 +114,10 @@ class UserOut(BaseModel):
     email: str = Field(..., description="User email address")
     name: str = Field(..., description="User display name")
     avatar_url: Optional[str] = Field(None, description="Avatar image URL")
+    bio: Optional[str] = Field(None, description="User biography")
+    phone: Optional[str] = Field(None, description="User phone number")
     created_at: datetime = Field(..., description="Account creation time")
+    updated_at: datetime = Field(..., description="Last update time")
     
     model_config = ConfigDict(from_attributes=True)  # Pydantic v2: allow ORM mode
 

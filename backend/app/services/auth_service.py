@@ -179,4 +179,124 @@ class AuthService:
             )
         
         return user
+    
+    @staticmethod
+    def update_user_profile(db: Session, user_id: str, profile_data: dict) -> User:
+        """
+        Update user profile information
+        
+        Args:
+            db: Database session
+            user_id: User ID (UUID string)
+            profile_data: Profile data to update (name, bio, phone)
+            
+        Returns:
+            Updated User object
+            
+        Raises:
+            HTTPException: If user not found
+        """
+        user = db.query(User).filter(User.id == user_id).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Update only provided fields
+        for field, value in profile_data.items():
+            if value is not None and hasattr(user, field):
+                setattr(user, field, value)
+        
+        db.commit()
+        db.refresh(user)
+        
+        return user
+    
+    @staticmethod
+    def change_password(db: Session, user_id: str, current_password: str, new_password: str) -> User:
+        """
+        Change user password
+        
+        Args:
+            db: Database session
+            user_id: User ID (UUID string)
+            current_password: Current password for verification
+            new_password: New password to set
+            
+        Returns:
+            Updated User object
+            
+        Raises:
+            HTTPException: If current password is incorrect or user not found
+        """
+        print(f"修改密码请求 - 用户ID: {user_id}")
+        print(f"当前密码长度: {len(current_password) if current_password else 0}")
+        print(f"新密码长度: {len(new_password) if new_password else 0}")
+        
+        user = db.query(User).filter(User.id == user_id).first()
+        
+        if not user:
+            print(f"用户未找到: {user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        print(f"找到用户: {user.email}")
+        
+        # Verify current password
+        password_valid = verify_password(current_password, user.password_hash)
+        print(f"密码验证结果: {password_valid}")
+        
+        if not password_valid:
+            print("当前密码验证失败")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect"
+            )
+        
+        # Update password
+        user.password_hash = get_password_hash(new_password)
+        
+        db.commit()
+        db.refresh(user)
+        
+        print("密码修改成功")
+        return user
+    
+    @staticmethod
+    def update_avatar(db: Session, user_id: str, avatar_url: str) -> User:
+        """
+        Update user avatar URL
+        
+        Args:
+            db: Database session
+            user_id: User ID (UUID string)
+            avatar_url: New avatar URL
+            
+        Returns:
+            Updated User object
+            
+        Raises:
+            HTTPException: If user not found
+        """
+        user = db.query(User).filter(User.id == user_id).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        print(f"更新前头像URL: {user.avatar_url}")
+        user.avatar_url = avatar_url
+        print(f"更新后头像URL: {user.avatar_url}")
+        
+        db.commit()
+        db.refresh(user)
+        
+        print(f"刷新后头像URL: {user.avatar_url}")
+        return user
 

@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.api.v1.api import api_router
 
@@ -56,6 +57,10 @@ async def health_check():
         "service": "backend"
     }
 
+
+# ===== Static Files =====
+# 挂载静态文件服务，用于访问上传的头像
+app.mount("/static", StaticFiles(directory="uploads"), name="static")
 
 # ===== API Routes =====
 app.include_router(api_router, prefix="/api/v1")

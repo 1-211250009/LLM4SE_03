@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { Button, Dropdown, Avatar, Space } from 'antd';
-import { UserOutlined, LogoutOutlined, SettingOutlined } from '@ant-design/icons';
+import { UserOutlined, LogoutOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 
 const Header = () => {
@@ -18,12 +18,6 @@ const Header = () => {
       icon: <UserOutlined />,
       label: '个人中心',
       onClick: () => navigate('/profile'),
-    },
-    {
-      key: 'settings',
-      icon: <SettingOutlined />,
-      label: '设置',
-      onClick: () => navigate('/settings'),
     },
     {
       type: 'divider' as const,
@@ -108,17 +102,20 @@ const Header = () => {
                     fontWeight: '600',
                     transition: 'all 0.3s ease',
                     position: 'relative',
-                    background: 'transparent'
+                    background: 'transparent',
+                    border: '1px solid rgba(102, 126, 234, 0.3)'
                   }}
                   onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
                     e.currentTarget.style.color = '#667eea';
                     e.currentTarget.style.background = 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)';
+                    e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.6)';
                     e.currentTarget.style.transform = 'translateY(-2px)';
                     e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.2)';
                   }}
                   onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => {
                     e.currentTarget.style.color = '#374151';
                     e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.3)';
                     e.currentTarget.style.transform = 'translateY(0)';
                     e.currentTarget.style.boxShadow = 'none';
                   }}
@@ -136,17 +133,20 @@ const Header = () => {
                     fontWeight: '600',
                     transition: 'all 0.3s ease',
                     position: 'relative',
-                    background: 'transparent'
+                    background: 'transparent',
+                    border: '1px solid rgba(102, 126, 234, 0.3)'
                   }}
                   onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
                     e.currentTarget.style.color = '#667eea';
                     e.currentTarget.style.background = 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)';
+                    e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.6)';
                     e.currentTarget.style.transform = 'translateY(-2px)';
                     e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.2)';
                   }}
                   onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => {
                     e.currentTarget.style.color = '#374151';
                     e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.3)';
                     e.currentTarget.style.transform = 'translateY(0)';
                     e.currentTarget.style.boxShadow = 'none';
                   }}
