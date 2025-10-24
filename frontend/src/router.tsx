@@ -6,6 +6,8 @@ import Login from './pages/Login/Login';
 import Register from './pages/Register/Register';
 import TripPlanning from './pages/TripPlanning/TripPlanning';
 import TripDetail from './pages/TripDetail/TripDetail';
+import TripManagement from './pages/TripManagement/TripManagement';
+import ExpenseManagement from './pages/ExpenseManagement/ExpenseManagement';
 import BudgetManagement from './pages/BudgetManagement/BudgetManagement';
 import Profile from './pages/Profile/Profile';
 
@@ -39,10 +41,26 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'trips',
+        element: (
+          <ProtectedRoute>
+            <TripManagement />
+          </ProtectedRoute>
+        ),
+      },
+      {
         path: 'trip/:id',
         element: (
           <ProtectedRoute>
             <TripDetail />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'expenses/:tripId',
+        element: (
+          <ProtectedRoute>
+            <ExpenseManagement />
           </ProtectedRoute>
         ),
       },

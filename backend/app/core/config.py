@@ -1,6 +1,7 @@
 """Application configuration management"""
 
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 from typing import List
 from functools import lru_cache
 import json
@@ -34,6 +35,10 @@ class Settings(BaseSettings):
     ALIYUN_LLM_API_KEY: str = ""
     ALIYUN_LLM_ENDPOINT: str = "https://dashscope.aliyuncs.com/api/v1"
     
+    # DeepSeek
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_ENDPOINT: str = "https://api.deepseek.com/v1"
+    
     # 科大讯飞
     XFYUN_APP_ID: str = ""
     XFYUN_API_KEY: str = ""
@@ -57,9 +62,10 @@ class Settings(BaseSettings):
     # ===== Logging Configuration =====
     LOG_LEVEL: str = "INFO"
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=True
+    )
 
 
 @lru_cache()

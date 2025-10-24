@@ -17,6 +17,7 @@ load_dotenv()
 # Import all models
 from app.models.base import Base
 from app.models.user import User  # Import all models here
+from app.models.trip import Trip, Itinerary, ItineraryItem, Expense, Budget
 
 # this is the Alembic Config object
 config = context.config

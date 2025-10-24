@@ -1,10 +1,16 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Button, Dropdown, Avatar, Space } from 'antd';
-import { UserOutlined, LogoutOutlined } from '@ant-design/icons';
+import { UserOutlined, LogoutOutlined, RobotOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 
-const Header = () => {
+interface HeaderProps {
+  onToggleChat?: () => void;
+  isChatOpen?: boolean;
+}
+
+const Header = ({ onToggleChat, isChatOpen }: HeaderProps) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuthenticated, logout } = useAuthStore();
 
   const handleLogout = () => {
@@ -40,9 +46,15 @@ const Header = () => {
       zIndex: 1000
     }}>
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '64px' }}>
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: '1fr auto 1fr', 
+          alignItems: 'center', 
+          height: '64px',
+          gap: '16px'
+        }}>
           {/* Logo */}
-          <Link to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+          <Link to="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', justifySelf: 'start' }}>
             <div style={{ 
               fontSize: '1.5rem', 
               fontWeight: 'bold', 
@@ -56,8 +68,12 @@ const Header = () => {
             </div>
           </Link>
 
-          {/* Navigation */}
-          <nav style={{ display: 'flex', gap: '32px' }}>
+          {/* Navigation - 网格居中 */}
+          <nav style={{ 
+            display: 'flex', 
+            gap: '32px', 
+            justifySelf: 'center'
+          }}>
             <Link
               to="/"
               style={{ 
@@ -157,34 +173,59 @@ const Header = () => {
             )}
           </nav>
 
-          {/* User Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          {/* User Actions - 网格右侧 */}
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '16px', 
+            justifySelf: 'end'
+          }}>
             {isAuthenticated ? (
-              <Dropdown
-                menu={{ items: userMenuItems }}
-                placement="bottomRight"
-                arrow
-              >
-                <Button 
-                  type="text" 
-                  style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '8px',
-                    height: '40px',
-                    padding: '0 12px',
-                    borderRadius: '8px'
-                  }}
-                >
-                  <Avatar
-                    size="small"
-                    icon={<UserOutlined />}
-                    src={user?.avatar}
-                    style={{ background: '#1890ff' }}
+              <>
+                {/* AI助手按钮 - 只在trip-planning页面显示 */}
+                {location.pathname === '/trip-planning' && onToggleChat && (
+                  <Button
+                    type="primary"
+                    shape="circle"
+                    size="middle"
+                    icon={<RobotOutlined />}
+                    onClick={onToggleChat}
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                      background: isChatOpen ? '#52c41a' : '#1890ff',
+                      border: 'none'
+                    }}
                   />
-                  <span style={{ fontSize: '16px', fontWeight: '600' }}>{user?.name}</span>
-                </Button>
-              </Dropdown>
+                )}
+                
+                <Dropdown
+                  menu={{ items: userMenuItems }}
+                  placement="bottomRight"
+                  arrow
+                >
+                  <Button 
+                    type="text" 
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px',
+                      height: '40px',
+                      padding: '0 12px',
+                      borderRadius: '8px'
+                    }}
+                  >
+                    <Avatar
+                      size="small"
+                      icon={<UserOutlined />}
+                      src={user?.avatar}
+                      style={{ background: '#1890ff' }}
+                    />
+                    <span style={{ fontSize: '16px', fontWeight: '600' }}>{user?.name}</span>
+                  </Button>
+                </Dropdown>
+              </>
             ) : (
               <Space>
                 <Button 
