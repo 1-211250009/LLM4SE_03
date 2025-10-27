@@ -31,6 +31,7 @@ class Trip(Base):
     user = relationship("User", back_populates="trips")
     itineraries = relationship("Itinerary", back_populates="trip", cascade="all, delete-orphan")
     expenses = relationship("Expense", back_populates="trip", cascade="all, delete-orphan")
+    budgets = relationship("Budget", back_populates="trip", cascade="all, delete-orphan")
 
 class Itinerary(Base):
     """行程安排模型"""
@@ -95,7 +96,7 @@ class Expense(Base):
     itinerary_id = Column(String(36), ForeignKey("itineraries.id"), nullable=True, index=True)
     amount = Column(Float, nullable=False)
     currency = Column(String(10), default="CNY")
-    category = Column(String(50), nullable=False)  # transport, accommodation, food, attraction, shopping, other
+    category = Column(String(50), nullable=False)  # transportation, accommodation, food, attraction, shopping, other
     description = Column(String(500))
     location = Column(String(200))
     coordinates = Column(JSON)  # {"lat": 39.9042, "lng": 116.4074}
@@ -118,14 +119,16 @@ class Budget(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     trip_id = Column(String(36), ForeignKey("trips.id"), nullable=False, index=True)
     total_budget = Column(Float, nullable=False)
+    spent_amount = Column(Float, default=0)  # 已花费金额
+    remaining_amount = Column(Float, default=0)  # 剩余金额
     currency = Column(String(10), default="CNY")
-    categories = Column(JSON)  # {"transport": 1000, "accommodation": 2000, "food": 800, ...}
+    categories = Column(JSON)  # {"transportation": 1000, "accommodation": 2000, "food": 800, ...}
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # 关系
-    trip = relationship("Trip", foreign_keys=[trip_id])
+    trip = relationship("Trip", back_populates="budgets")
 
 # 更新User模型以包含关系
 from .user import User

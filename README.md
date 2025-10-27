@@ -31,6 +31,8 @@
 ### 前置要求
 
 - Node.js >= 20.0.0
+- Python >= 3.11
+- Poetry (Python包管理)
 - Docker >= 24.0.0
 - Docker Compose >= 2.0.0
 - Git
@@ -48,18 +50,31 @@ docker-compose -f docker-compose.dev.yml up -d
 # 安装并启动后端（Python + FastAPI）
 cd backend
 poetry install
-cp .env.example .env  # 配置环境变量
+cp ENV_TEMPLATE.txt .env  # 配置环境变量
 alembic upgrade head  # 数据库迁移
 poetry run uvicorn app.main:app --reload --port 8000
 
 # 安装并启动前端（新终端）
 cd frontend
 npm install
-cp .env.example .env  # 配置环境变量
+cp ENV_TEMPLATE.txt .env  # 配置环境变量
 npm run dev
 ```
 
 访问 http://localhost:5173 查看前端应用，http://localhost:8000/docs 查看API文档。
+
+### 生产环境部署
+
+```bash
+# 使用Docker Compose一键部署
+docker-compose up -d
+
+# 查看服务状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f
+```
 
 详细的环境搭建步骤请查看 [快速开始指南](doc/QUICK_START.md)。
 
@@ -79,9 +94,10 @@ npm run dev
 - **缓存**: Redis
 - **认证**: JWT (PyJWT + passlib)
 - **协议**: RESTful API + AG-UI Protocol (SSE)
+- **LLM**: DeepSeek API (支持工具调用)
 
 ### 第三方服务
-- **LLM**: 阿里云百炼平台（千问模型）
+- **LLM**: DeepSeek API (deepseek-chat模型)
 - **语音**: 科大讯飞开放平台（ASR + TTS）
 - **地图**: 百度地图开放平台
 
@@ -97,14 +113,15 @@ ai-travel-planner/
 │   │   ├── services/   # API服务
 │   │   └── store/      # 状态管理
 │   └── ...
-├── backend/            # 后端项目（Node.js + Express）
-│   ├── src/
-│   │   ├── routes/     # 路由层
-│   │   ├── controllers/# 控制器层
+├── backend/            # 后端项目（Python + FastAPI）
+│   ├── app/
+│   │   ├── api/        # API路由
+│   │   ├── models/     # 数据模型
 │   │   ├── services/   # 业务逻辑层
-│   │   ├── middleware/ # 中间件
+│   │   ├── agents/     # AI Agent实现
+│   │   ├── utils/      # 工具函数
 │   │   └── ...
-│   └── prisma/         # 数据库模式和迁移
+│   └── alembic/        # 数据库迁移
 ├── docker/             # Docker配置
 ├── docs/               # 项目文档
 └── ...
@@ -154,7 +171,7 @@ AI辅助预算分析和费用估算，支持语音或手动记录开销，实时
 
 本项目需要以下第三方服务的API密钥：
 
-1. **阿里云百炼平台** - https://bailian.console.aliyun.com/
+1. **DeepSeek API** - https://platform.deepseek.com/
 2. **科大讯飞开放平台** - https://www.xfyun.cn/
 3. **百度地图开放平台** - https://lbsyun.baidu.com/
 
@@ -163,6 +180,23 @@ AI辅助预算分析和费用估算，支持语音或手动记录开销，实时
 **配置方法**：
 - **后端**: 在 `backend/.env` 文件中配置
 - **前端**: 在应用设置页面输入或通过 `frontend/.env` 配置
+
+**环境变量示例**：
+```bash
+# 后端 .env 文件
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+BAIDU_MAPS_API_KEY=your_baidu_maps_api_key_here
+DATABASE_URL=postgresql://admin:password@localhost:5432/travel_planner
+REDIS_URL=redis://localhost:6379
+SECRET_KEY=your_secret_key_here
+
+# 前端 .env 文件
+VITE_API_BASE_URL=http://localhost:8000
+VITE_BAIDU_MAPS_API_KEY=your_baidu_maps_api_key_here
+VITE_XUNFEI_APP_ID=your_xunfei_app_id_here
+VITE_XUNFEI_API_KEY=your_xunfei_api_key_here
+VITE_XUNFEI_API_SECRET=your_xunfei_api_secret_here
+```
 
 **AG-UI协议说明**：
 - 本项目使用AG-UI协议实现AI Agent通信
@@ -176,31 +210,71 @@ AI辅助预算分析和费用估算，支持语音或手动记录开销，实时
 ```bash
 # 后端测试
 cd backend
-npm run test              # 运行所有测试
-npm run test:coverage     # 生成覆盖率报告
+poetry run pytest         # 运行所有测试
+poetry run pytest --cov   # 生成覆盖率报告
 
 # 前端测试
 cd frontend
 npm run test              # 运行单元测试
 npm run test:e2e          # 运行E2E测试
+
+# 集成测试
+docker-compose up -d
+npm run test:integration  # 运行集成测试
 ```
+
+### 测试覆盖率
+
+- **后端**: 目标覆盖率 > 80%
+- **前端**: 目标覆盖率 > 70%
+- **集成测试**: 覆盖主要用户流程
 
 ## 📝 开发计划
 
 项目分为11个阶段开发，每个阶段约3-6天，总计约7周完成：
 
 - [x] **阶段0**: 项目初始化
-- [ ] **阶段1**: 用户认证系统
-- [ ] **阶段2**: LLM-Agent模块开发
-- [ ] **阶段3**: 地图模块开发
-- [ ] **阶段4**: 语音模块开发
-- [ ] **阶段5**: 行程管理功能
-- [ ] **阶段6**: 费用管理功能
-- [ ] **阶段7**: 前端UI/UX优化
-- [ ] **阶段8**: 云端同步功能
-- [ ] **阶段9**: 测试与Bug修复
-- [ ] **阶段10**: Docker部署与CI/CD
-- [ ] **阶段11**: 文档与交付
+- [x] **阶段1**: 用户认证系统
+- [x] **阶段2**: LLM-Agent模块开发
+- [x] **阶段3**: 地图模块开发
+- [x] **阶段4**: 语音模块开发
+- [x] **阶段5**: 行程管理功能
+- [x] **阶段6**: 费用管理功能
+- [x] **阶段7**: 前端UI/UX优化
+- [x] **阶段8**: 云端同步功能
+- [x] **阶段9**: 测试与Bug修复
+- [x] **阶段10**: Docker部署与CI/CD
+- [x] **阶段11**: 文档与交付
+
+## ✅ 项目完成状态
+
+**当前版本**: v1.0.0  
+**完成度**: 100%  
+**最后更新**: 2024年12月
+
+### 已实现功能
+
+#### 核心功能
+- ✅ **用户认证系统** - 注册、登录、JWT认证、用户资料管理
+- ✅ **智能行程规划** - 基于DeepSeek LLM的AI行程规划，支持工具调用
+- ✅ **地图可视化** - 百度地图集成，POI搜索、路线规划、标记管理
+- ✅ **语音交互** - 科大讯飞语音识别和合成，支持语音输入和播报
+- ✅ **费用管理** - 预算分析、费用记录、统计图表
+- ✅ **行程管理** - 行程创建、编辑、删除、详情查看
+
+#### 技术特性
+- ✅ **AG-UI协议** - 完整实现AG-UI协议，支持流式响应和工具调用
+- ✅ **响应式设计** - 现代化UI/UX，支持多设备访问
+- ✅ **实时通信** - Server-Sent Events (SSE) 实时数据流
+- ✅ **Docker部署** - 完整的Docker化部署方案
+- ✅ **CI/CD** - GitHub Actions自动化测试和部署
+
+#### 第三方集成
+- ✅ **DeepSeek API** - LLM服务集成，支持工具调用
+- ✅ **百度地图API** - 地图服务和POI搜索
+- ✅ **科大讯飞API** - 语音识别和合成服务
+- ✅ **PostgreSQL** - 数据持久化存储
+- ✅ **Redis** - 缓存和会话管理
 
 详细的阶段规划请查看 [技术设计文档](doc/TECHNICAL_DESIGN.md)。
 

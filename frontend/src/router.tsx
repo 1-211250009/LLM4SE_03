@@ -57,7 +57,7 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'expenses/:tripId',
+        path: 'expense-management',
         element: (
           <ProtectedRoute>
             <ExpenseManagement />

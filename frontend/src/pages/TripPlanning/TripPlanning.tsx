@@ -21,7 +21,8 @@ import { useAuthStore } from '../../store/auth.store';
 import { AGUIClient, AGUIEventHandler, AGUIEvent } from '../../utils/agui-client';
 import MarkdownRenderer from '../../components/common/MarkdownRenderer';
 import { MapContainer } from '../../modules/map';
-import { MapConfig, MapMarker, POIInfo, Point, MarkerSelection } from '../../modules/map/types/map.types';
+import { MapConfig, MapMarker, POIInfo, Point, MarkerSelection, RouteInfo } from '../../modules/map/types/map.types';
+import { useRouteCalc } from '../../modules/map/hooks/useRouteCalc';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -51,6 +52,10 @@ const TripPlanning = () => {
   
   // 地图相关状态
   const [mapMarkers, setMapMarkers] = useState<MapMarker[]>([]);
+  const [currentRoutes, setCurrentRoutes] = useState<RouteInfo[]>([]);
+  
+  // 路线计算Hook
+  const { calculateRoute, clearRoutes } = useRouteCalc();
   
   // 行程相关状态 - 暂时注释掉，后续可能会用到
   // const [currentTrip, setCurrentTrip] = useState<TripInfo | null>(null);
@@ -86,6 +91,16 @@ const TripPlanning = () => {
   const aguiClientRef = useRef<AGUIClient | null>(null);
   const eventHandlerRef = useRef<AGUIEventHandler | null>(null);
 
+  // 滚动到底部的函数
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  // 当消息变化时自动滚动到底部
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
   // 地图配置 - 使用useMemo避免重复创建
   const mapConfig: MapConfig = useMemo(() => ({
     center: { lat: 39.9042, lng: 116.4074 }, // 北京天安门
@@ -99,10 +114,6 @@ const TripPlanning = () => {
     enablePinchToZoom: true
   }), []);
 
-  // 滚动到底部
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
 
   useEffect(() => {
     scrollToBottom();
@@ -197,6 +208,7 @@ const TripPlanning = () => {
         setPendingMessage('');
         // 清空所有流式消息，确保新的对话从干净状态开始
         setMessages(prev => prev.filter(msg => !msg.isStreaming));
+        console.log('DEBUG: Run started, cleared streaming messages');
       });
 
       eventHandlerRef.current.setOnRunFinished((_runId: string, _result: any) => {
@@ -324,6 +336,20 @@ const TripPlanning = () => {
         // 如果工具调用返回行程规划数据，显示行程规划卡片
         if (result && result.success && result.data && result.data.trip_plan) {
           handleTripPlanResult(result.data.trip_plan);
+        }
+        
+        // 如果工具调用返回路线规划数据，在地图上显示路线
+        if (result && result.success && result.data && result.data.route_info) {
+          displayRouteOnMap(result.data.route_info);
+        }
+        
+        // 如果工具调用返回路线计算数据，在地图上显示路线
+        if (result && result.success && result.data && result.data.origin && result.data.destination) {
+          displayRouteOnMap({
+            origin: result.data.origin,
+            destination: result.data.destination,
+            mode: result.data.mode || 'driving'
+          });
         }
         
         // 检查是否所有工具调用都完成了
@@ -565,7 +591,64 @@ const TripPlanning = () => {
   const cancelTripPlan = useCallback(() => {
     setShowTripPlanCard(false);
     setCurrentTripPlan(null);
-  }, []);
+    // 清除路线
+    clearRoutes();
+    setCurrentRoutes([]);
+  }, [clearRoutes]);
+
+  // 显示路线在地图上
+  const displayRouteOnMap = useCallback(async (routeInfo: any) => {
+    try {
+      if (routeInfo.origin && routeInfo.destination) {
+        const route = await calculateRoute({
+          origin: routeInfo.origin,
+          destination: routeInfo.destination,
+          mode: routeInfo.mode || 'driving'
+        });
+        
+        setCurrentRoutes([route]);
+        
+        // 添加起点和终点标记
+        const newMarkers: MapMarker[] = [];
+        
+        // 起点标记
+        if (typeof routeInfo.origin === 'string') {
+          // 这里简化处理，实际应该调用地理编码API
+          newMarkers.push({
+            id: 'route_origin',
+            position: { lat: 32.0603, lng: 118.7969 }, // 南京坐标
+            title: routeInfo.origin,
+            content: `<div style="padding: 8px;"><h4>起点</h4><p>${routeInfo.origin}</p></div>`
+          });
+        }
+        
+        // 终点标记
+        if (typeof routeInfo.destination === 'string') {
+          newMarkers.push({
+            id: 'route_destination',
+            position: { lat: 33.6103, lng: 119.0192 }, // 淮安坐标
+            title: routeInfo.destination,
+            content: `<div style="padding: 8px;"><h4>终点</h4><p>${routeInfo.destination}</p></div>`
+          });
+        }
+        
+        setMapMarkers(prev => [...prev.filter(m => !m.id.startsWith('route_')), ...newMarkers]);
+        
+        message.success('路线已在地图上显示');
+      }
+    } catch (error) {
+      console.error('Route display error:', error);
+      message.error('路线显示失败');
+    }
+  }, [calculateRoute]);
+
+  // 清除地图上的路线
+  const clearMapRoutes = useCallback(() => {
+    clearRoutes();
+    setCurrentRoutes([]);
+    setMapMarkers(prev => prev.filter(m => !m.id.startsWith('route_')));
+    message.info('已清除地图路线');
+  }, [clearRoutes]);
 
   // 处理地图点击 - 使用useCallback避免重复创建
   const handleMapClick = useCallback((point: Point) => {
@@ -580,10 +663,11 @@ const TripPlanning = () => {
       containerId="trip-planning-map"
       config={mapConfig}
       markers={mapMarkers}
+      routes={currentRoutes}
       onMapClick={handleMapClick}
       style={{ height: '100%' }}
     />
-  ), [mapConfig, mapMarkers, handleMapClick]);
+  ), [mapConfig, mapMarkers, currentRoutes, handleMapClick]);
 
   return (
     <>
@@ -941,11 +1025,27 @@ const TripPlanning = () => {
                 ))}
 
                 {isLoading && (
-                  <div style={{ textAlign: 'center', padding: '16px' }}>
-                    <Spin />
-                    <Text type="secondary" style={{ marginLeft: '8px' }}>
-                      AI正在思考中...
-                    </Text>
+                  <div style={{ 
+                    textAlign: 'center', 
+                    padding: '20px',
+                    background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                    borderRadius: '12px',
+                    margin: '16px 0',
+                    border: '1px solid #0ea5e9'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+                      <Spin size="default" />
+                      <div>
+                        <Text strong style={{ color: '#0369a1', fontSize: '16px' }}>
+                          AI正在思考中...
+                        </Text>
+                        <div style={{ marginTop: '4px' }}>
+                          <Text type="secondary" style={{ fontSize: '14px' }}>
+                            请稍候，正在为您生成最佳方案
+                          </Text>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -958,6 +1058,9 @@ const TripPlanning = () => {
                     style={{ margin: '16px 0' }}
                   />
                 )}
+
+                {/* 滚动锚点 */}
+                <div ref={messagesEndRef} />
 
                 {/* 行程规划卡片 */}
                 {showTripPlanCard && currentTripPlan && (
@@ -1021,9 +1124,38 @@ const TripPlanning = () => {
 
                       {currentTripPlan.routes && currentTripPlan.routes.length > 0 && (
                         <div style={{ marginBottom: '16px' }}>
-                          <Text strong style={{ fontSize: '14px', marginBottom: '8px', display: 'block' }}>
-                            🗺️ 路线规划
-                          </Text>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <Text strong style={{ fontSize: '14px' }}>
+                              🗺️ 路线规划
+                            </Text>
+                            <Space>
+                              <Button 
+                                size="small" 
+                                type="primary"
+                                onClick={() => {
+                                  // 显示第一条路线在地图上
+                                  if (currentTripPlan.routes && currentTripPlan.routes.length > 0) {
+                                    const firstRoute = currentTripPlan.routes[0];
+                                    displayRouteOnMap({
+                                      origin: firstRoute.from,
+                                      destination: firstRoute.to,
+                                      mode: firstRoute.transport === '驾车' ? 'driving' : 
+                                            firstRoute.transport === '公交' ? 'transit' : 
+                                            firstRoute.transport === '步行' ? 'walking' : 'driving'
+                                    });
+                                  }
+                                }}
+                              >
+                                在地图上显示
+                              </Button>
+                              <Button 
+                                size="small" 
+                                onClick={clearMapRoutes}
+                              >
+                                清除路线
+                              </Button>
+                            </Space>
+                          </div>
                           {currentTripPlan.routes?.map((route, index: number) => (
                             <div 
                               key={index}
@@ -1184,14 +1316,30 @@ const TripPlanning = () => {
                 background: 'linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%)',
                 borderRadius: '0 0 0 12px'
               }}>
-                <Space.Compact style={{ width: '100%' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  gap: '8px', 
+                  alignItems: 'flex-end',
+                  background: '#fff',
+                  border: '1px solid #d9d9d9',
+                  borderRadius: '8px',
+                  padding: '8px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  transition: 'all 0.2s ease'
+                }}>
                   <TextArea
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyPress={handleKeyPress}
-                    placeholder="输入你的旅行问题..."
+                    placeholder="输入你的旅行问题，比如：我想去北京玩3天，预算5000元..."
                     autoSize={{ minRows: 1, maxRows: 4 }}
-                    style={{ resize: 'none' }}
+                    style={{ 
+                      resize: 'none',
+                      border: 'none',
+                      boxShadow: 'none',
+                      fontSize: '14px',
+                      lineHeight: '1.5'
+                    }}
                     disabled={isLoading}
                   />
                   <Button
@@ -1200,10 +1348,71 @@ const TripPlanning = () => {
                     onClick={handleSendMessage}
                     loading={isLoading}
                     disabled={!inputValue.trim()}
+                    style={{
+                      height: '40px',
+                      borderRadius: '6px',
+                      fontWeight: '500',
+                      boxShadow: '0 2px 4px rgba(24, 144, 255, 0.2)',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isLoading && inputValue.trim()) {
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                        e.currentTarget.style.boxShadow = '0 4px 8px rgba(24, 144, 255, 0.3)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 2px 4px rgba(24, 144, 255, 0.2)';
+                    }}
                   >
-                    发送
+                    {isLoading ? '发送中...' : '发送'}
                   </Button>
-                </Space.Compact>
+                </div>
+                
+                {/* 快捷提示 */}
+                <div style={{ 
+                  marginTop: '12px', 
+                  display: 'flex', 
+                  gap: '8px', 
+                  flexWrap: 'wrap' 
+                }}>
+                  {[
+                    '推荐北京景点',
+                    '规划3天行程',
+                    '查询美食推荐',
+                    '计算交通费用'
+                  ].map((hint) => (
+                    <Button
+                      key={hint}
+                      size="small"
+                      type="text"
+                      onClick={() => setInputValue(hint)}
+                      style={{
+                        fontSize: '12px',
+                        color: '#666',
+                        border: '1px solid #e8e8e8',
+                        borderRadius: '16px',
+                        height: '28px',
+                        padding: '0 12px',
+                        background: '#fafafa',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#f0f9ff';
+                        e.currentTarget.style.borderColor = '#1890ff';
+                        e.currentTarget.style.color = '#1890ff';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#fafafa';
+                        e.currentTarget.style.borderColor = '#e8e8e8';
+                        e.currentTarget.style.color = '#666';
+                      }}
+                    >
+                      {hint}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

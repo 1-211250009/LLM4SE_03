@@ -5,7 +5,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { useMap } from '../hooks/useMap';
-import { MapConfig, MapMarker } from '../types/map.types';
+import { MapConfig, MapMarker, RouteInfo } from '../types/map.types';
 import { Spin, Alert } from 'antd';
 import './MapContainer.css';
 
@@ -13,6 +13,7 @@ interface MapContainerProps {
   containerId: string;
   config: MapConfig;
   markers?: MapMarker[];
+  routes?: RouteInfo[];
   onMapClick?: (point: { lat: number; lng: number }) => void;
   onMarkerClick?: (marker: MapMarker) => void;
   className?: string;
@@ -23,8 +24,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
   containerId,
   config,
   markers = [],
+  routes = [],
   onMapClick,
-  onMarkerClick,
+  // onMarkerClick, // 暂时未使用
   className = '',
   style = {}
 }) => {
@@ -33,10 +35,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const {
     mapState,
     addMarker,
-    removeMarker,
     clearMarkers,
-    setCenter,
-    setZoom,
     getMapInstance
   } = useMap(containerId, config);
 
@@ -52,6 +51,55 @@ const MapContainer: React.FC<MapContainerProps> = ({
       addMarker(marker);
     });
   }, [markers, mapState.isLoading, addMarker, clearMarkers]);
+
+  // 处理路线变化
+  useEffect(() => {
+    if (mapState.isLoading || !routes.length) return;
+
+    const mapInstance = getMapInstance();
+    if (!mapInstance) return;
+
+    // 清除现有路线
+    mapInstance.clearOverlays();
+
+    // 重新添加标记
+    markers.forEach(marker => {
+      addMarker(marker);
+    });
+
+    // 添加路线
+    routes.forEach((route, index) => {
+      if (route.overview_polyline) {
+        try {
+          // 解析路线折线
+          const points = route.overview_polyline.split(';').map(pointStr => {
+            const [lng, lat] = pointStr.split(',').map(Number);
+            return new window.BMap.Point(lng, lat);
+          });
+
+          // 创建折线
+          const polyline = new window.BMap.Polyline(points, {
+            strokeColor: index === 0 ? '#1890ff' : '#52c41a',
+            strokeWeight: 4,
+            strokeOpacity: 0.8
+          });
+
+          mapInstance.addOverlay(polyline);
+
+          // 调整地图视野以包含路线
+          if (route.bounds) {
+            const bounds = new window.BMap.Bounds(
+              new window.BMap.Point(route.bounds.southwest.lng, route.bounds.southwest.lat),
+              new window.BMap.Point(route.bounds.northeast.lng, route.bounds.northeast.lat)
+            );
+            mapInstance.setViewport(bounds);
+          }
+        } catch (error) {
+          console.error('Error drawing route:', error);
+        }
+      }
+    });
+  }, [routes, mapState.isLoading, markers, getMapInstance, addMarker]);
 
   // 处理地图点击事件
   useEffect(() => {
@@ -74,11 +122,11 @@ const MapContainer: React.FC<MapContainerProps> = ({
   }, [getMapInstance, onMapClick]);
 
   // 处理标记点击事件
-  const handleMarkerClick = (marker: MapMarker) => {
-    if (onMarkerClick) {
-      onMarkerClick(marker);
-    }
-  };
+  // const handleMarkerClick = (marker: MapMarker) => {
+  //   if (onMarkerClick) {
+  //     onMarkerClick(marker);
+  //   }
+  // };
 
   if (mapState.error) {
     return (

@@ -15,7 +15,7 @@ class TripStatus(str, Enum):
     CANCELLED = "cancelled"
 
 class ExpenseCategory(str, Enum):
-    TRANSPORT = "transport"
+    TRANSPORT = "transportation"
     ACCOMMODATION = "accommodation"
     FOOD = "food"
     ATTRACTION = "attraction"
@@ -223,6 +223,8 @@ class BudgetUpdate(BaseModel):
 class Budget(BudgetBase):
     id: str
     trip_id: str
+    spent_amount: float = 0
+    remaining_amount: float = 0
     is_active: bool
     created_at: datetime
     updated_at: Optional[datetime] = None

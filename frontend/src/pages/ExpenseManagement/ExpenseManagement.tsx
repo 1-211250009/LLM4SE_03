@@ -1,594 +1,732 @@
 /**
  * 费用管理页面
+ * 支持费用的增删改查、预算分析、智能管理
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { 
-  Card, 
-  Button, 
-  Table, 
-  Tag, 
-  Space, 
-  Modal, 
-  Form, 
-  Input, 
-  DatePicker, 
-  Select, 
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Card,
+  Button,
+  Table,
+  Modal,
+  Form,
+  Input,
+  Select,
   InputNumber,
-  message,
-  Popconfirm,
-  Tooltip,
+  DatePicker,
+  Space,
+  Tag,
+  Statistic,
   Row,
   Col,
-  Statistic
+  Typography,
+  message,
+  Popconfirm,
+  Progress
 } from 'antd';
-import { 
-  PlusOutlined, 
-  EditOutlined, 
-  DeleteOutlined, 
-  DollarOutlined,
-  PieChartOutlined,
-  CalendarOutlined
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  RobotOutlined,
+  DollarOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
-import { VoiceButton } from '../../modules/voice';
-import { VoiceCommand } from '../../modules/voice/types/voice.types';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+// import { AGUIClient, AGUIEventHandler, AGUIEvent } from '../../utils/agui-client';
+import MarkdownRenderer from '../../components/common/MarkdownRenderer';
+import { ApiService } from '../../services/api.service';
+import { Trip, Expense, Budget, TripListResponse, ExpenseListResponse, AIQueryResponse } from '../../types/api.types';
 import dayjs from 'dayjs';
 
+const { Title, Text } = Typography;
 const { Option } = Select;
-const { TextArea } = Input;
+const { RangePicker } = DatePicker;
+// const { TextArea } = Input;
 
-interface Expense {
-  id: string;
-  trip_id: string;
-  itinerary_id?: string;
-  amount: number;
-  currency: string;
-  category: 'transport' | 'accommodation' | 'food' | 'attraction' | 'shopping' | 'other';
-  description?: string;
-  location?: string;
-  payment_method?: string;
-  is_shared: boolean;
-  shared_amount?: number;
-  notes?: string;
-  expense_date: string;
-  created_at: string;
-  updated_at?: string;
-}
+// 费用类型
+const EXPENSE_CATEGORIES = [
+  { value: 'transportation', label: '交通', color: 'blue' },
+  { value: 'accommodation', label: '住宿', color: 'green' },
+  { value: 'food', label: '餐饮', color: 'orange' },
+  { value: 'attraction', label: '景点', color: 'purple' },
+  { value: 'shopping', label: '购物', color: 'red' },
+  { value: 'entertainment', label: '娱乐', color: 'cyan' },
+  { value: 'other', label: '其他', color: 'default' }
+];
 
-interface Trip {
-  id: string;
-  title: string;
-  destination: string;
-  start_date: string;
-  end_date: string;
-}
 
-interface ExpenseStats {
-  total_amount: number;
-  category_stats: Array<{
-    category: string;
-    amount: number;
-  }>;
-  expense_days: number;
-}
+const ExpenseManagement: React.FC = () => {
+  const { user } = useAuthStore();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const tripId = searchParams.get('tripId');
+  
 
-const ExpenseManagement = () => {
-  const { accessToken } = useAuthStore();
+  // 状态管理
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<ExpenseStats | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const [form] = Form.useForm();
-  const [pagination, setPagination] = useState({
-    current: 1,
-    pageSize: 10,
-    total: 0
-  });
-  const [selectedTripId, setSelectedTripId] = useState<string>('');
+  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiMessages, setAiMessages] = useState<Array<{role: 'user' | 'assistant', content: string}>>([]);
+  const [aiInput, setAiInput] = useState('');
 
-  // 获取行程列表
-  const fetchTrips = useCallback(async () => {
-    if (!accessToken) return;
+  // 模态框状态
+  const [expenseModalVisible, setExpenseModalVisible] = useState(false);
+  const [aiModalVisible, setAiModalVisible] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
-    try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const response = await fetch(`${baseUrl}/api/v1/trips/?page=1&size=100`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
+  // 表单
+  const [expenseForm] = Form.useForm();
 
-      if (!response.ok) {
-        throw new Error('获取行程列表失败');
-      }
+  // 筛选状态
+  const [filters, setFilters] = useState({
+    category: 'all',
+    dateRange: null as [dayjs.Dayjs, dayjs.Dayjs] | null,
+    amountRange: [0, 10000] as [number, number]
+  });
 
-      const data = await response.json();
-      setTrips(data.trips || []);
-    } catch (error) {
-      message.error('获取行程列表失败');
-      console.error('Fetch trips error:', error);
+  // AG-UI客户端
+  // const [aguiClient] = useState(() => new AGUIClient());
+  // const eventHandlerRef = React.useRef<AGUIEventHandler | null>(null);
+
+  // 初始化
+  useEffect(() => {
+    if (!user) {
+      navigate('/login');
+      return;
     }
-  }, [accessToken]);
 
-  // 获取费用列表
-  const fetchExpenses = useCallback(async (tripId: string, page = 1, size = 10) => {
-    if (!accessToken || !tripId) return;
+    loadTrips();
+  }, [user, tripId, navigate]);
 
+  // 加载行程列表
+  const loadTrips = async () => {
     try {
-      setLoading(true);
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const response = await fetch(`${baseUrl}/api/v1/budgets/trips/${tripId}/expenses?page=${page}&size=${size}`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
+      const data = await ApiService.get<TripListResponse>('/trips/?page=1&size=100');
+      setTrips(data.trips || []);
+      
+      // 如果有tripId参数，自动选中该行程
+      if (tripId) {
+        const trip = data.trips?.find((t: Trip) => t.id === tripId);
+        if (trip) {
+          setSelectedTrip(trip);
+          // 加载该行程的费用和预算数据
+          loadExpenses(trip.id);
+          loadBudget(trip.id);
+        } else {
+          message.warning('指定的行程不存在');
         }
-      });
-
-      if (!response.ok) {
-        throw new Error('获取费用列表失败');
       }
-
-      const data = await response.json();
-      setExpenses(data.expenses);
-      setPagination(prev => ({
-        ...prev,
-        current: data.page,
-        total: data.total
-      }));
     } catch (error) {
-      message.error('获取费用列表失败');
-      console.error('Fetch expenses error:', error);
+      console.error('Failed to load trips:', error);
+      message.error('加载行程失败');
+    }
+  };
+
+  // 加载费用数据
+  const loadExpenses = async (tripId: string) => {
+    setLoading(true);
+    try {
+      const data = await ApiService.get<ExpenseListResponse>(`/expenses/?trip_id=${tripId}`);
+      setExpenses(data.expenses || []);
+    } catch (error) {
+      console.error('Failed to load expenses:', error);
+      message.error('加载费用失败');
+      setExpenses([]);
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  };
 
-  // 获取费用统计
-  const fetchExpenseStats = useCallback(async (tripId: string) => {
-    if (!accessToken || !tripId) return;
-
+  // 加载预算数据
+  const loadBudget = async (tripId: string) => {
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const response = await fetch(`${baseUrl}/api/v1/budgets/trips/${tripId}/expenses/stats`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('获取费用统计失败');
-      }
-
-      const data = await response.json();
-      setStats(data);
+      const data = await ApiService.get<Budget[]>(`/budgets/trips/${tripId}/budgets`);
+      setBudgets(data || []);
     } catch (error) {
-      console.error('Fetch expense stats error:', error);
+      console.error('Failed to load budget:', error);
+      setBudgets([]);
     }
-  }, [accessToken]);
+  };
 
-  // 创建或更新费用
-  const handleSubmit = async (values: any) => {
-    if (!accessToken || !selectedTripId) return;
-
+  // 保存费用
+  const saveExpense = async (values: any) => {
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const url = editingExpense 
-        ? `${baseUrl}/api/v1/budgets/expenses/${editingExpense.id}`
-        : `${baseUrl}/api/v1/budgets/trips/${selectedTripId}/expenses`;
-      
-      const method = editingExpense ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({
-          ...values,
-          trip_id: selectedTripId,
-          expense_date: values.expense_date?.toISOString()
-        })
-      });
+      const expenseData = {
+        ...values,
+        trip_id: selectedTrip?.id,
+        expense_date: values.date.format('YYYY-MM-DD'),
+        currency: 'CNY'
+      };
 
-      if (!response.ok) {
-        throw new Error(editingExpense ? '更新费用失败' : '创建费用失败');
+      if (editingExpense) {
+        await ApiService.put(`/expenses/${editingExpense.id}`, expenseData);
+        message.success('费用更新成功');
+      } else {
+        if (!selectedTrip) {
+          message.error('请先选择行程');
+          return;
+        }
+        await ApiService.post(`/budgets/trips/${selectedTrip.id}/expenses`, expenseData);
+        message.success('费用添加成功');
       }
-
-      message.success(editingExpense ? '费用更新成功' : '费用创建成功');
-      setModalVisible(false);
+      
+      setExpenseModalVisible(false);
+      expenseForm.resetFields();
       setEditingExpense(null);
-      form.resetFields();
-      fetchExpenses(selectedTripId, pagination.current, pagination.pageSize);
-      fetchExpenseStats(selectedTripId);
+      if (selectedTrip) {
+        loadExpenses(selectedTrip.id);
+        loadBudget(selectedTrip.id);
+      }
     } catch (error) {
-      message.error(editingExpense ? '更新费用失败' : '创建费用失败');
-      console.error('Submit expense error:', error);
+      console.error('Failed to save expense:', error);
+      message.error('保存失败');
     }
   };
 
   // 删除费用
-  const handleDelete = async (expenseId: string) => {
-    if (!accessToken || !selectedTripId) return;
-
+  const deleteExpense = async (id: string) => {
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const response = await fetch(`${baseUrl}/api/v1/budgets/expenses/${expenseId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('删除费用失败');
-      }
-
+      await ApiService.delete(`/expenses/${id}`);
       message.success('费用删除成功');
-      fetchExpenses(selectedTripId, pagination.current, pagination.pageSize);
-      fetchExpenseStats(selectedTripId);
+      if (selectedTrip) {
+        loadExpenses(selectedTrip.id);
+        loadBudget(selectedTrip.id);
+      }
     } catch (error) {
-      message.error('删除费用失败');
-      console.error('Delete expense error:', error);
+      console.error('Failed to delete expense:', error);
+      message.error('删除失败');
     }
   };
 
   // 编辑费用
-  const handleEdit = (expense: Expense) => {
+  const editExpense = (expense: Expense) => {
     setEditingExpense(expense);
-    form.setFieldsValue({
+    expenseForm.setFieldsValue({
       ...expense,
-      expense_date: expense.expense_date ? dayjs(expense.expense_date) : null
+      date: dayjs(expense.expense_date)
     });
-    setModalVisible(true);
+    setExpenseModalVisible(true);
   };
 
-  // 语音命令处理
-  const handleVoiceCommand = useCallback((command: VoiceCommand) => {
-    console.log('Voice command:', command);
-    
-    if (command.type === 'add_expense') {
-      // 解析语音命令中的费用信息
-      const entities = command.entities || {};
-      const amount = entities.amount || 0;
-      const category = entities.category || 'other';
-      
-      // 自动填充表单
-      form.setFieldsValue({
-        amount: amount,
-        category: category,
-        description: command.text,
-        expense_date: dayjs()
+  // 筛选费用
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter(expense => {
+      if (filters.category && filters.category !== 'all' && expense.category !== filters.category) return false;
+      if (filters.dateRange) {
+        const expenseDate = dayjs(expense.expense_date);
+        if (expenseDate.isBefore(filters.dateRange[0]) || expenseDate.isAfter(filters.dateRange[1])) {
+          return false;
+        }
+      }
+      if (expense.amount < filters.amountRange[0] || expense.amount > filters.amountRange[1]) {
+        return false;
+      }
+      return true;
+    });
+  }, [expenses, filters]);
+
+  // 计算统计数据
+  const statistics = useMemo(() => {
+    const totalSpent = filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const categoryStats = EXPENSE_CATEGORIES.map(cat => {
+      const categoryExpenses = filteredExpenses.filter(exp => exp.category === cat.value);
+      const amount = categoryExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+      return {
+        category: cat.label,
+        amount,
+        count: categoryExpenses.length,
+        percentage: totalSpent > 0 ? (amount / totalSpent * 100).toFixed(1) : 0
+      };
+    }).filter(stat => stat.amount > 0);
+
+    return {
+      totalSpent,
+      categoryStats,
+      averageExpense: filteredExpenses.length > 0 ? totalSpent / filteredExpenses.length : 0,
+      expenseCount: filteredExpenses.length
+    };
+  }, [filteredExpenses]);
+
+  // AI费用管理
+  const handleAiQuery = async () => {
+    if (!aiInput.trim() || !selectedTrip) return;
+
+    setAiLoading(true);
+    const userMessage = aiInput.trim();
+    setAiInput('');
+
+    // 添加用户消息
+    setAiMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+
+    try {
+      // 发送请求到后端AI服务
+      const data = await ApiService.post<AIQueryResponse>('/expenses/ai/query', {
+        query: userMessage,
+        trip_id: selectedTrip.id,
+        context: {
+          trip_title: selectedTrip.title,
+          expenses: expenses,
+          budgets: budgets,
+          statistics: statistics
+        }
       });
+
+      setAiMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
       
-      setModalVisible(true);
-      message.success('语音命令已识别，请完善费用信息');
+      // 如果AI执行了操作，刷新数据
+      if (data.action_performed) {
+        loadExpenses(selectedTrip.id);
+        loadBudget(selectedTrip.id);
+      }
+    } catch (error) {
+      console.error('AI query failed:', error);
+      message.error('AI查询失败');
+      setAiMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: '抱歉，AI助手暂时无法响应，请稍后再试。' 
+      }]);
+    } finally {
+      setAiLoading(false);
     }
-  }, [form]);
+  };
 
   // 表格列定义
   const columns = [
     {
-      title: '金额',
-      dataIndex: 'amount',
-      key: 'amount',
-      render: (amount: number, record: Expense) => (
-        <div>
-          <div style={{ fontWeight: 500, color: '#f50' }}>
-            ¥{amount.toLocaleString()}
-          </div>
-          {record.is_shared && (
-            <div style={{ fontSize: '12px', color: '#666' }}>
-              分摊: ¥{record.shared_amount?.toLocaleString() || 0}
-            </div>
-          )}
-        </div>
-      )
+      title: '日期',
+      dataIndex: 'expense_date',
+      key: 'expense_date',
+      width: 100,
+      render: (date: string) => dayjs(date).format('MM-DD')
     },
     {
-      title: '类别',
+      title: '分类',
       dataIndex: 'category',
       key: 'category',
+      width: 100,
       render: (category: string) => {
-        const categoryConfig = {
-          transport: { color: 'blue', text: '交通' },
-          accommodation: { color: 'green', text: '住宿' },
-          food: { color: 'orange', text: '餐饮' },
-          attraction: { color: 'purple', text: '景点' },
-          shopping: { color: 'pink', text: '购物' },
-          other: { color: 'default', text: '其他' }
-        };
-        const config = categoryConfig[category as keyof typeof categoryConfig] || categoryConfig.other;
-        return <Tag color={config.color}>{config.text}</Tag>;
+        const cat = EXPENSE_CATEGORIES.find(c => c.value === category);
+        return <Tag color={cat?.color}>{cat?.label || category}</Tag>;
       }
     },
     {
       title: '描述',
       dataIndex: 'description',
       key: 'description',
-      render: (text: string, record: Expense) => (
-        <div>
-          <div style={{ marginBottom: 4 }}>{text || '-'}</div>
-          {record.location && (
-            <div style={{ fontSize: '12px', color: '#666' }}>
-              📍 {record.location}
-            </div>
-          )}
-        </div>
-      )
+      ellipsis: true
     },
     {
-      title: '支付方式',
-      dataIndex: 'payment_method',
-      key: 'payment_method',
-      render: (method: string) => method || '-'
+      title: '金额',
+      dataIndex: 'amount',
+      key: 'amount',
+      width: 100,
+      render: (amount: number) => `¥${amount.toFixed(2)}`,
+      sorter: (a: Expense, b: Expense) => a.amount - b.amount
     },
     {
-      title: '日期',
-      dataIndex: 'expense_date',
-      key: 'expense_date',
-      render: (date: string) => (
-        <div style={{ fontSize: '12px' }}>
-          <CalendarOutlined style={{ marginRight: 4 }} />
-          {dayjs(date).format('YYYY-MM-DD HH:mm')}
-        </div>
-      )
+      title: '地点',
+      dataIndex: 'location',
+      key: 'location',
+      width: 120,
+      ellipsis: true
     },
     {
       title: '操作',
-      key: 'actions',
+      key: 'action',
+      width: 120,
       render: (_: any, record: Expense) => (
-        <Space>
-          <Tooltip title="编辑">
-            <Button 
-              type="text" 
-              icon={<EditOutlined />} 
-              onClick={() => handleEdit(record)}
-            />
-          </Tooltip>
+        <Space size="small">
+          <Button
+            type="text"
+            icon={<EditOutlined />}
+            onClick={() => editExpense(record)}
+            size="small"
+          />
           <Popconfirm
-            title="确定要删除这笔费用吗？"
-            onConfirm={() => handleDelete(record.id)}
+            title="确定删除这笔费用吗？"
+            onConfirm={() => deleteExpense(record.id)}
             okText="确定"
             cancelText="取消"
           >
-            <Tooltip title="删除">
-              <Button 
-                type="text" 
-                danger 
-                icon={<DeleteOutlined />}
-              />
-            </Tooltip>
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              size="small"
+            />
           </Popconfirm>
         </Space>
       )
     }
   ];
 
-  // 页面加载时获取数据
-  useEffect(() => {
-    fetchTrips();
-  }, [fetchTrips]);
-
-  useEffect(() => {
-    if (selectedTripId) {
-      fetchExpenses(selectedTripId);
-      fetchExpenseStats(selectedTripId);
-    }
-  }, [selectedTripId, fetchExpenses, fetchExpenseStats]);
+  if (!user) {
+    return null;
+  }
 
   return (
-    <div style={{ padding: '24px' }}>
-      {/* 统计概览 */}
-      {stats && (
-        <Row gutter={16} style={{ marginBottom: '24px' }}>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="总支出"
-                value={stats.total_amount}
-                prefix={<DollarOutlined />}
-                precision={2}
-                suffix="元"
+    <div style={{ padding: '24px', background: '#f5f5f5', minHeight: '100vh' }}>
+      {/* 页面标题 */}
+      <div style={{ marginBottom: '24px' }}>
+        <Title level={2} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <DollarOutlined />
+          费用管理
+        </Title>
+      </div>
+
+      {/* 行程选择 */}
+      <Card style={{ marginBottom: '24px' }}>
+        <Space wrap>
+          <Text strong>选择行程：</Text>
+          <Select
+            placeholder={trips.length === 0 ? "正在加载行程..." : "请选择行程"}
+            style={{ width: 300 }}
+            value={selectedTrip?.id}
+            loading={trips.length === 0}
+            onChange={(tripId) => {
+              const trip = trips.find(t => t.id === tripId);
+              setSelectedTrip(trip || null);
+              if (trip) {
+                loadExpenses(trip.id);
+                loadBudget(trip.id);
+                navigate(`/expense-management?tripId=${tripId}`);
+              }
+            }}
+          >
+            {trips.map(trip => (
+              <Option key={trip.id} value={trip.id}>
+                {trip.title} ({trip.destination || '未设置目的地'})
+              </Option>
+            ))}
+          </Select>
+          {tripId && !selectedTrip && trips.length > 0 && (
+            <Text type="warning">指定的行程不存在或已被删除</Text>
+          )}
+        </Space>
+      </Card>
+
+
+      {/* 显示加载状态或内容 */}
+      {trips.length === 0 ? (
+        <Card>
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            <Text type="secondary">正在加载行程数据...</Text>
+          </div>
+        </Card>
+      ) : selectedTrip ? (
+        <>
+          {/* 统计概览 */}
+          <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic
+                  title="总支出"
+                  value={statistics.totalSpent}
+                  prefix="¥"
+                  precision={2}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic
+                  title="费用笔数"
+                  value={statistics.expenseCount}
+                  suffix="笔"
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic
+                  title="平均支出"
+                  value={statistics.averageExpense}
+                  prefix="¥"
+                  precision={2}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic
+                  title="剩余预算"
+                  value={selectedTrip.budget ? selectedTrip.budget - statistics.totalSpent : 0}
+                  prefix="¥"
+                  precision={2}
+                  valueStyle={{ color: selectedTrip.budget && selectedTrip.budget - statistics.totalSpent < 0 ? '#cf1322' : '#3f8600' }}
+                />
+              </Card>
+            </Col>
+          </Row>
+
+          {/* 预算进度 */}
+          {selectedTrip.budget && (
+            <Card style={{ marginBottom: '24px' }}>
+              <Title level={4}>预算进度</Title>
+              <Progress
+                percent={Math.min((statistics.totalSpent / selectedTrip.budget) * 100, 100)}
+                status={statistics.totalSpent > selectedTrip.budget ? 'exception' : 'active'}
+                format={(percent) => `${percent?.toFixed(1)}%`}
               />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="费用天数"
-                value={stats.expense_days}
-                prefix={<CalendarOutlined />}
-                suffix="天"
-              />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card>
-              <div style={{ textAlign: 'center' }}>
-                <PieChartOutlined style={{ fontSize: '24px', color: '#1890ff' }} />
-                <div style={{ marginTop: '8px' }}>费用分析</div>
+              <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                <Text type="secondary">已用：¥{statistics.totalSpent.toFixed(2)}</Text>
+                <Text type="secondary">预算：¥{selectedTrip.budget.toFixed(2)}</Text>
               </div>
             </Card>
-          </Col>
-        </Row>
+          )}
+
+          {/* 费用分类统计 */}
+          <Card style={{ marginBottom: '24px' }}>
+            <Title level={4}>费用分类统计</Title>
+            <Row gutter={[16, 16]}>
+              {statistics.categoryStats.map(stat => (
+                <Col xs={24} sm={12} md={8} lg={6} key={stat.category}>
+                  <Card size="small">
+                    <div style={{ textAlign: 'center' }}>
+                      <Text strong style={{ fontSize: '16px' }}>{stat.category}</Text>
+                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1890ff', margin: '8px 0' }}>
+                        ¥{stat.amount.toFixed(2)}
+                      </div>
+                      <Text type="secondary">{stat.count}笔 • {stat.percentage}%</Text>
+                    </div>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+          </Card>
+
+          {/* 操作栏 */}
+          <Card style={{ marginBottom: '24px' }}>
+            <Row justify="space-between" align="middle">
+              <Col>
+                <Space wrap>
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={() => {
+                      setEditingExpense(null);
+                      expenseForm.resetFields();
+                      setExpenseModalVisible(true);
+                    }}
+                  >
+                    添加费用
+                  </Button>
+                  <Button
+                    icon={<RobotOutlined />}
+                    onClick={() => setAiModalVisible(true)}
+                  >
+                    AI费用助手
+                  </Button>
+                  <Button
+                    icon={<DownloadOutlined />}
+                    onClick={() => message.info('导出功能开发中')}
+                  >
+                    导出数据
+                  </Button>
+                </Space>
+              </Col>
+              <Col>
+                <Space wrap>
+                  <Select
+                    placeholder="分类筛选"
+                    style={{ width: 120 }}
+                    value={filters.category}
+                    onChange={(value) => setFilters(prev => ({ ...prev, category: value }))}
+                  >
+                    <Option value="all">全部</Option>
+                    {EXPENSE_CATEGORIES.map(cat => (
+                      <Option key={cat.value} value={cat.value}>{cat.label}</Option>
+                    ))}
+                  </Select>
+                  <RangePicker
+                    placeholder={['开始日期', '结束日期']}
+                    value={filters.dateRange}
+                    onChange={(dates) => setFilters(prev => ({ ...prev, dateRange: dates as [dayjs.Dayjs, dayjs.Dayjs] | null }))}
+                  />
+                </Space>
+              </Col>
+            </Row>
+          </Card>
+
+          {/* 费用列表 */}
+          <Card>
+            <Table
+              columns={columns}
+              dataSource={filteredExpenses}
+              rowKey="id"
+              loading={loading}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total) => `共 ${total} 条记录`
+              }}
+            />
+          </Card>
+        </>
+      ) : (
+        <Card>
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            <Text type="secondary">请选择一个行程以查看和管理费用</Text>
+          </div>
+        </Card>
       )}
 
-      {/* 操作栏 */}
-      <Card style={{ marginBottom: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h3 style={{ margin: 0 }}>费用管理</h3>
-            <p style={{ margin: '4px 0 0 0', color: '#666' }}>
-              记录和管理您的旅行费用
-            </p>
-          </div>
-          <Space>
-            <Select
-              placeholder="选择行程"
-              style={{ width: 200 }}
-              value={selectedTripId}
-              onChange={setSelectedTripId}
-              options={trips.map(trip => ({
-                value: trip.id,
-                label: `${trip.title} - ${trip.destination}`
-              }))}
-            />
-            <VoiceButton
-              onCommand={handleVoiceCommand}
-              type="primary"
-              size="middle"
-            />
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />}
-              onClick={() => {
-                setEditingExpense(null);
-                form.resetFields();
-                setModalVisible(true);
-              }}
-              disabled={!selectedTripId}
-            >
-              添加费用
-            </Button>
-          </Space>
-        </div>
-      </Card>
-
-      {/* 费用列表 */}
-      <Card>
-        <Table
-          columns={columns}
-          dataSource={expenses}
-          rowKey="id"
-          loading={loading}
-          pagination={{
-            ...pagination,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total, range) => 
-              `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
-            onChange: (page, size) => {
-              fetchExpenses(selectedTripId, page, size || pagination.pageSize);
-            }
-          }}
-        />
-      </Card>
-
-      {/* 创建/编辑费用模态框 */}
+      {/* 添加/编辑费用模态框 */}
       <Modal
         title={editingExpense ? '编辑费用' : '添加费用'}
-        open={modalVisible}
+        open={expenseModalVisible}
         onCancel={() => {
-          setModalVisible(false);
+          setExpenseModalVisible(false);
           setEditingExpense(null);
-          form.resetFields();
+          expenseForm.resetFields();
         }}
-        onOk={() => form.submit()}
-        width={500}
+        onOk={() => expenseForm.submit()}
+        width={600}
       >
         <Form
-          form={form}
+          form={expenseForm}
           layout="vertical"
-          onFinish={handleSubmit}
+          onFinish={saveExpense}
         >
+          <Form.Item
+            name="category"
+            label="费用分类"
+            rules={[{ required: true, message: '请选择费用分类' }]}
+          >
+            <Select placeholder="请选择分类">
+              {EXPENSE_CATEGORIES.map(cat => (
+                <Option key={cat.value} value={cat.value}>
+                  <Tag color={cat.color}>{cat.label}</Tag>
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+
           <Form.Item
             name="amount"
             label="金额"
             rules={[{ required: true, message: '请输入金额' }]}
           >
-            <InputNumber 
-              min={0} 
+            <InputNumber
               style={{ width: '100%' }}
               placeholder="请输入金额"
-              addonBefore="¥"
+              min={0}
+              precision={2}
+              formatter={(value) => `¥ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
             />
-          </Form.Item>
-
-          <Form.Item
-            name="category"
-            label="类别"
-            rules={[{ required: true, message: '请选择类别' }]}
-          >
-            <Select placeholder="选择费用类别">
-              <Option value="transport">交通</Option>
-              <Option value="accommodation">住宿</Option>
-              <Option value="food">餐饮</Option>
-              <Option value="attraction">景点</Option>
-              <Option value="shopping">购物</Option>
-              <Option value="other">其他</Option>
-            </Select>
           </Form.Item>
 
           <Form.Item
             name="description"
             label="描述"
+            rules={[{ required: true, message: '请输入费用描述' }]}
           >
             <Input placeholder="请输入费用描述" />
+          </Form.Item>
+
+          <Form.Item
+            name="date"
+            label="日期"
+            rules={[{ required: true, message: '请选择日期' }]}
+          >
+            <DatePicker style={{ width: '100%' }} />
           </Form.Item>
 
           <Form.Item
             name="location"
             label="地点"
           >
-            <Input placeholder="请输入地点" />
-          </Form.Item>
-
-          <Form.Item
-            name="payment_method"
-            label="支付方式"
-          >
-            <Select placeholder="选择支付方式">
-              <Option value="cash">现金</Option>
-              <Option value="card">银行卡</Option>
-              <Option value="mobile">手机支付</Option>
-              <Option value="other">其他</Option>
-            </Select>
-          </Form.Item>
-
-          <Form.Item
-            name="expense_date"
-            label="费用日期"
-            rules={[{ required: true, message: '请选择费用日期' }]}
-          >
-            <DatePicker 
-              style={{ width: '100%' }}
-              placeholder="选择费用日期"
-              showTime
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="is_shared"
-            valuePropName="checked"
-          >
-            <input type="checkbox" /> 这是分摊费用
-          </Form.Item>
-
-          <Form.Item
-            name="shared_amount"
-            label="分摊金额"
-          >
-            <InputNumber 
-              min={0} 
-              style={{ width: '100%' }}
-              placeholder="请输入分摊金额"
-              addonBefore="¥"
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="notes"
-            label="备注"
-          >
-            <TextArea 
-              rows={3} 
-              placeholder="请输入备注" 
-            />
+            <Input placeholder="请输入地点（可选）" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* AI费用助手模态框 */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <RobotOutlined />
+            AI费用助手
+          </div>
+        }
+        open={aiModalVisible}
+        onCancel={() => setAiModalVisible(false)}
+        footer={null}
+        width={800}
+      >
+        <div style={{ height: '500px', display: 'flex', flexDirection: 'column' }}>
+          {/* AI对话区域 */}
+          <div style={{ 
+            flex: 1, 
+            border: '1px solid #d9d9d9', 
+            borderRadius: '6px', 
+            padding: '16px', 
+            marginBottom: '16px',
+            overflowY: 'auto',
+            background: '#fafafa'
+          }}>
+            {aiMessages.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#999', marginTop: '100px' }}>
+                <RobotOutlined style={{ fontSize: '48px', marginBottom: '16px' }} />
+                <div>我是您的费用管理助手，可以帮您：</div>
+                <div>• 分析费用支出情况</div>
+                <div>• 提供预算建议</div>
+                <div>• 智能分类费用</div>
+                <div>• 生成费用报告</div>
+              </div>
+            ) : (
+              aiMessages.map((msg, index) => (
+                <div key={index} style={{ marginBottom: '16px' }}>
+                  <div style={{ 
+                    fontWeight: 'bold', 
+                    marginBottom: '4px',
+                    color: msg.role === 'user' ? '#1890ff' : '#52c41a'
+                  }}>
+                    {msg.role === 'user' ? '您' : 'AI助手'}
+                  </div>
+                  <div style={{ 
+                    background: msg.role === 'user' ? '#e6f7ff' : '#f6ffed',
+                    padding: '12px',
+                    borderRadius: '6px',
+                    border: `1px solid ${msg.role === 'user' ? '#91d5ff' : '#b7eb8f'}`
+                  }}>
+                    <MarkdownRenderer content={msg.content} />
+                  </div>
+                </div>
+              ))
+            )}
+            {aiLoading && (
+              <div style={{ textAlign: 'center', color: '#999' }}>
+                <div>AI正在思考中...</div>
+              </div>
+            )}
+          </div>
+
+          {/* 输入区域 */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Input
+              value={aiInput}
+              onChange={(e) => setAiInput(e.target.value)}
+              placeholder="请输入您的问题，例如：分析我的交通费用支出情况"
+              onPressEnter={handleAiQuery}
+              disabled={aiLoading}
+            />
+            <Button
+              type="primary"
+              onClick={handleAiQuery}
+              loading={aiLoading}
+              disabled={!aiInput.trim()}
+            >
+              发送
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

@@ -169,6 +169,37 @@ const Header = ({ onToggleChat, isChatOpen }: HeaderProps) => {
                 >
                   我的行程
                 </Link>
+                <Link
+                  to="/expense-management"
+                  style={{ 
+                    color: '#374151', 
+                    textDecoration: 'none',
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    transition: 'all 0.3s ease',
+                    position: 'relative',
+                    background: 'transparent',
+                    border: '1px solid rgba(102, 126, 234, 0.3)'
+                  }}
+                  onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
+                    e.currentTarget.style.color = '#667eea';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)';
+                    e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.6)';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.2)';
+                  }}
+                  onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => {
+                    e.currentTarget.style.color = '#374151';
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.3)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  费用管理
+                </Link>
               </>
             )}
           </nav>

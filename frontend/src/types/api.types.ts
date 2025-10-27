@@ -101,9 +101,9 @@ export interface Expense {
   id: string;
   budget_id: string;
   amount: number;
-  category: 'transport' | 'accommodation' | 'food' | 'attraction' | 'shopping' | 'other';
+  category: 'transportation' | 'accommodation' | 'food' | 'attraction' | 'shopping' | 'other';
   description: string;
-  date: string;
+  expense_date: string;
   location?: string;
   created_at: string;
   updated_at: string;
@@ -153,4 +153,29 @@ export interface VoiceResult {
   text: string;
   confidence: number;
   duration: number;
+}
+
+// 行程列表响应类型
+export interface TripListResponse {
+  trips: Trip[];
+  total: number;
+  page: number;
+  size: number;
+  has_next: boolean;
+}
+
+// 费用列表响应类型
+export interface ExpenseListResponse {
+  expenses: Expense[];
+  total: number;
+  page: number;
+  size: number;
+  has_next: boolean;
+  total_amount: number;
+}
+
+// AI 查询响应类型
+export interface AIQueryResponse {
+  response: string;
+  action_performed: boolean;
 }

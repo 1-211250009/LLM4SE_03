@@ -96,60 +96,53 @@ class SimpleTripAgent(BaseAgent):
                 tool_calls = self._parse_tool_calls(full_response)
                 print(f"DEBUG: Parsed tool calls: {tool_calls}")
                 
-                # 执行工具调用
-                for i, tool_call in enumerate(tool_calls):
-                    call_id = f"call_{int(datetime.now().timestamp())}_{i}"
-                    try:
-                        print(f"DEBUG: Executing tool call: {tool_call}")
-                        
-                        # 发送工具调用请求事件
-                        yield self._create_tool_call_request_event(
-                            tool_call["name"], 
-                            tool_call["args"], 
-                            call_id
-                        )
-                        
-                        # 执行工具调用
-                        result = await self._execute_tool_call(tool_call["name"], tool_call["args"], context)
-                        
-                        # 发送工具调用结果事件
-                        yield self._create_tool_call_result_event(call_id, result)
-                        
-                    except Exception as e:
-                        print(f"Error executing tool call: {e}")
-                        # 发送错误结果
-                        yield self._create_tool_call_result_event(
-                            call_id,
-                            {"success": False, "error": str(e)}
-                        )
-                
-                # 7. 根据是否有工具调用决定如何发送回复
+                # 执行工具调用并收集结果
+                tool_results = []
                 if tool_calls:
-                    # 有工具调用：先执行工具，再基于结果生成详细回复
-                    # 收集实际的工具调用结果
-                    tool_results = []
                     for i, tool_call in enumerate(tool_calls):
                         call_id = f"call_{int(datetime.now().timestamp())}_{i}"
                         try:
+                            print(f"DEBUG: Executing tool call: {tool_call}")
+                            
+                            # 发送工具调用请求事件
+                            yield self._create_tool_call_request_event(
+                                tool_call["name"], 
+                                tool_call["args"], 
+                                call_id
+                            )
+                            
+                            # 执行工具调用
                             result = await self._execute_tool_call(tool_call["name"], tool_call["args"], context)
+                            
+                            # 发送工具调用结果事件
+                            yield self._create_tool_call_result_event(call_id, result)
+                            
+                            # 收集结果用于生成详细回复
                             tool_results.append({
                                 "name": tool_call["name"],
                                 "args": tool_call["args"],
                                 "result": result
                             })
+                            
                         except Exception as e:
-                            print(f"Error collecting tool result: {e}")
+                            print(f"Error executing tool call: {e}")
+                            # 发送错误结果
+                            error_result = {"success": False, "error": str(e)}
+                            yield self._create_tool_call_result_event(call_id, error_result)
+                            
+                            # 收集错误结果
                             tool_results.append({
                                 "name": tool_call["name"],
                                 "args": tool_call["args"],
-                                "result": {"success": False, "error": str(e)}
+                                "result": error_result
                             })
-                    
-                    # 基于实际工具调用结果生成详细回复
+                
+                # 7. 根据是否有工具调用决定如何发送回复
+                if tool_calls and tool_results:
+                    # 有工具调用：基于工具调用结果生成详细回复
                     detailed_response = await self._generate_detailed_response_from_actual_tools(tool_results, user_input)
                     if detailed_response.strip():
-                        print(f"DEBUG: Sending detailed response based on actual tool results: {detailed_response}")
-                        # 使用原始消息ID发送详细回复
+                        print(f"DEBUG: Sending detailed response based on tool results: {detailed_response}")
                         yield self._create_text_message_content_event(detailed_response, message_id)
                     else:
                         # 如果没有生成详细回复，发送清理后的回复

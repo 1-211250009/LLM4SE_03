@@ -30,11 +30,13 @@ import {
   CalendarOutlined,
   DollarOutlined,
   EnvironmentOutlined,
-  ClockCircleOutlined
+  ClockCircleOutlined,
+  WalletOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { VoiceButton } from '../../modules/voice';
 import { VoiceCommand } from '../../modules/voice/types/voice.types';
+import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 
 // const { RangePicker } = DatePicker;
@@ -71,6 +73,7 @@ interface TripStats {
 
 const TripManagement = () => {
   const { accessToken } = useAuthStore();
+  const navigate = useNavigate();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<TripStats | null>(null);
@@ -219,8 +222,7 @@ const TripManagement = () => {
 
   // 查看行程详情
   const handleView = (trip: Trip) => {
-    // 这里可以跳转到行程详情页面
-    message.info(`查看行程: ${trip.title}`);
+    navigate(`/trip/${trip.id}`);
   };
 
   // 语音命令处理
@@ -341,6 +343,13 @@ const TripManagement = () => {
               type="text" 
               icon={<EyeOutlined />} 
               onClick={() => handleView(record)}
+            />
+          </Tooltip>
+          <Tooltip title="费用管理">
+            <Button 
+              type="text" 
+              icon={<WalletOutlined />} 
+              onClick={() => navigate(`/expense-management?tripId=${record.id}`)}
             />
           </Tooltip>
           <Tooltip title="编辑">
