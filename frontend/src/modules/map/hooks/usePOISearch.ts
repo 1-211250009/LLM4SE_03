@@ -5,7 +5,7 @@
 
 import { useState, useCallback } from 'react';
 import { mapService } from '../services/baidu-map.service';
-import { POISearchParams, POISearchResult, POIInfo } from '../types/map.types';
+import { POISearchParams, POIInfo } from '../types/map.types';
 
 export function usePOISearch() {
   const [searchState, setSearchState] = useState<{

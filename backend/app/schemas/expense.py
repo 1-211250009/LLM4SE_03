@@ -64,34 +64,7 @@ class ExpenseResponse(ExpenseBase):
         from_attributes = True
 
 
-class BudgetBase(BaseModel):
-    """预算基础模型"""
-    trip_id: str = Field(..., description="行程ID")
-    total_budget: float = Field(..., gt=0, description="总预算")
-    categories: Optional[Dict[str, float]] = Field(None, description="分类预算")
-
-
-class BudgetCreate(BudgetBase):
-    """创建预算模型"""
-    pass
-
-
-class BudgetUpdate(BaseModel):
-    """更新预算模型"""
-    total_budget: Optional[float] = Field(None, gt=0, description="总预算")
-    categories: Optional[Dict[str, float]] = Field(None, description="分类预算")
-
-
-class BudgetResponse(BudgetBase):
-    """预算响应模型"""
-    id: str
-    spent_amount: float = 0
-    remaining_amount: float = 0
-    created_at: datetime
-    updated_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
+# Budget模型已删除 - 预算信息现在直接在Trip模型中管理
 
 
 class ExpenseSummary(BaseModel):

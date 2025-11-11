@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Trip, Itinerary, Activity } from '../types/api.types';
+import { Trip, Itinerary, ItineraryItem } from '../types/api.types';
 
 interface TripState {
   trips: Trip[];
@@ -17,8 +17,8 @@ interface TripActions {
   addItinerary: (tripId: string, itinerary: Itinerary) => void;
   updateItinerary: (tripId: string, itineraryId: string, updates: Partial<Itinerary>) => void;
   deleteItinerary: (tripId: string, itineraryId: string) => void;
-  addActivity: (tripId: string, itineraryId: string, activity: Activity) => void;
-  updateActivity: (tripId: string, itineraryId: string, activityId: string, updates: Partial<Activity>) => void;
+  addActivity: (tripId: string, itineraryId: string, activity: ItineraryItem) => void;
+  updateActivity: (tripId: string, itineraryId: string, activityId: string, updates: Partial<ItineraryItem>) => void;
   deleteActivity: (tripId: string, itineraryId: string, activityId: string) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -61,7 +61,7 @@ export const useTripStore = create<TripState & TripActions>((set, get) => ({
         trip.id === tripId
           ? {
               ...trip,
-              itinerary: [...(trip.itinerary || []), itinerary],
+              itineraries: [...(trip.itineraries || []), itinerary],
             }
           : trip
       ),
@@ -75,7 +75,7 @@ export const useTripStore = create<TripState & TripActions>((set, get) => ({
         trip.id === tripId
           ? {
               ...trip,
-              itinerary: (trip.itinerary || []).map((it) =>
+              itineraries: (trip.itineraries || []).map((it: Itinerary) =>
                 it.id === itineraryId ? { ...it, ...updates } : it
               ),
             }
@@ -91,7 +91,7 @@ export const useTripStore = create<TripState & TripActions>((set, get) => ({
         trip.id === tripId
           ? {
               ...trip,
-              itinerary: (trip.itinerary || []).filter((it) => it.id !== itineraryId),
+              itineraries: (trip.itineraries || []).filter((it: Itinerary) => it.id !== itineraryId),
             }
           : trip
       ),
@@ -105,9 +105,9 @@ export const useTripStore = create<TripState & TripActions>((set, get) => ({
         trip.id === tripId
           ? {
               ...trip,
-              itinerary: (trip.itinerary || []).map((it) =>
+              itineraries: (trip.itineraries || []).map((it: Itinerary) =>
                 it.id === itineraryId
-                  ? { ...it, activities: [...it.activities, activity] }
+                  ? { ...it, items: [...(it.items || []), activity] }
                   : it
               ),
             }
@@ -123,11 +123,11 @@ export const useTripStore = create<TripState & TripActions>((set, get) => ({
         trip.id === tripId
           ? {
               ...trip,
-              itinerary: (trip.itinerary || []).map((it) =>
+              itineraries: (trip.itineraries || []).map((it: Itinerary) =>
                 it.id === itineraryId
                   ? {
                       ...it,
-                      activities: it.activities.map((act) =>
+                      items: (it.items || []).map((act: ItineraryItem) =>
                         act.id === activityId ? { ...act, ...updates } : act
                       ),
                     }
@@ -146,11 +146,11 @@ export const useTripStore = create<TripState & TripActions>((set, get) => ({
         trip.id === tripId
           ? {
               ...trip,
-              itinerary: (trip.itinerary || []).map((it) =>
+              itineraries: (trip.itineraries || []).map((it: Itinerary) =>
                 it.id === itineraryId
                   ? {
                       ...it,
-                      activities: it.activities.filter((act) => act.id !== activityId),
+                      items: (it.items || []).filter((act: ItineraryItem) => act.id !== activityId),
                     }
                   : it
               ),

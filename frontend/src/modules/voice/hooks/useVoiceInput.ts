@@ -35,13 +35,25 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
   const [currentText, setCurrentText] = useState<string>('');
 
   const voiceServiceRef = useRef<VoiceService | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
 
   // 初始化语音服务
   useEffect(() => {
     const initVoiceService = async () => {
       try {
+        // 检查是否启用语音功能
+        const voiceEnabled = import.meta.env.VITE_ENABLE_VOICE === 'true';
+        
+        if (!voiceEnabled) {
+          console.warn('语音功能未启用。请在.env文件中设置VITE_ENABLE_VOICE=true并配置科大讯飞API密钥。');
+          setState(prev => ({ 
+            ...prev, 
+            error: '语音功能未启用。请联系管理员配置语音服务。'
+          }));
+          return;
+        }
+        
         // 从环境变量或配置中获取科大讯飞配置
         const config = {
           appId: import.meta.env.VITE_XUNFEI_APP_ID || '',
@@ -50,6 +62,16 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
           language: 'zh_cn',
           accent: 'mandarin'
         };
+        
+        // 检查配置是否完整
+        if (!config.appId || !config.apiKey || !config.apiSecret) {
+          console.warn('科大讯飞配置不完整。请在.env文件中配置VITE_XUNFEI_*环境变量。');
+          setState(prev => ({ 
+            ...prev, 
+            error: '语音服务配置不完整。请配置科大讯飞API密钥。'
+          }));
+          return;
+        }
 
         voiceServiceRef.current = new VoiceService(config);
         await voiceServiceRef.current.initialize();

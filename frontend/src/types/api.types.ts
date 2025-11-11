@@ -53,25 +53,59 @@ export interface Trip {
   id: string;
   title: string;
   description?: string;
-  destination: string;
-  start_date: string;
-  end_date: string;
-  budget?: number;
-  status: 'draft' | 'planned' | 'ongoing' | 'completed' | 'cancelled';
+  destination?: string;
+  start_date?: string;
+  end_date?: string;
+  duration_days: number;
+  budget_total?: number;  // 新字段
+  currency: string;       // 新字段
+  status: 'draft' | 'planned' | 'active' | 'completed' | 'cancelled';
+  is_public?: boolean;
+  tags?: string[];
+  preferences?: any;
+  traveler_count: number;  // 新字段
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
   user_id: string;
-  itinerary?: Itinerary[];
+  itineraries?: Itinerary[];  // 改为复数
+  expenses?: Expense[];
 }
 
 export interface Itinerary {
   id: string;
   trip_id: string;
-  day: number;
-  date: string;
-  activities: Activity[];
+  day_number: number;  // 改名
+  date?: string;
+  title?: string;
+  description?: string;
+  items: ItineraryItem[];  // 改为items
 }
 
+export interface ItineraryItem {
+  id: string;
+  itinerary_id: string;
+  poi_id?: string;
+  name: string;
+  description?: string;
+  address?: string;
+  coordinates?: { lat: number; lng: number };
+  category: string;
+  start_time?: string;
+  end_time?: string;
+  estimated_duration?: number;
+  estimated_cost?: number;
+  rating?: number;
+  price_level?: string;
+  phone?: string;
+  website?: string;
+  opening_hours?: string;
+  images?: string[];
+  order_index: number;
+  is_completed: boolean;
+  notes?: string;
+}
+
+// 保留旧的Activity类型以兼容
 export interface Activity {
   id: string;
   itinerary_id: string;
@@ -92,21 +126,26 @@ export interface Budget {
   trip_id: string;
   total_budget: number;
   spent_amount: number;
-  currency: string;
-  created_at: string;
-  updated_at: string;
+  remaining_budget?: number;  // 新增
+  budget_usage_percent?: number;  // 新增
+  currency?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Expense {
   id: string;
-  budget_id: string;
+  trip_id: string;  // 改为trip_id
+  budget_id?: string;
+  itinerary_item_id?: string;  // 新增：关联到节点
   amount: number;
-  category: 'transportation' | 'accommodation' | 'food' | 'attraction' | 'shopping' | 'other';
+  currency?: string;
+  category: 'transportation' | 'accommodation' | 'food' | 'attraction' | 'shopping' | 'entertainment' | 'other';
   description: string;
   expense_date: string;
   location?: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // 地图相关类型
@@ -178,4 +217,9 @@ export interface ExpenseListResponse {
 export interface AIQueryResponse {
   response: string;
   action_performed: boolean;
+  pending_action?: {
+    id?: string;
+    function_name: string;
+    arguments: string; // JSON字符串
+  };
 }

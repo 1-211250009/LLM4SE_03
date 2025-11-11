@@ -8,8 +8,8 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, date
 import uuid
 
-from ..models.trip import Expense, Budget, Trip
-from ..schemas.expense import ExpenseCreate, ExpenseUpdate, ExpenseResponse, BudgetResponse, ExpenseSummary, CategoryStats
+from ..models.trip import Expense, Trip
+from ..schemas.expense import ExpenseCreate, ExpenseUpdate, ExpenseResponse, ExpenseSummary, CategoryStats
 
 
 class ExpenseService:
@@ -233,29 +233,16 @@ class ExpenseService:
         return stats
 
     async def _update_budget(self, trip_id: str):
-        """更新预算信息"""
+        """更新预算信息（预算现在在Trip模型中）"""
         # 计算已花费金额
         spent_amount = self.db.query(func.sum(Expense.amount)).filter(
             Expense.trip_id == trip_id
         ).scalar() or 0
         
-        # 获取或创建预算记录
-        budget = self.db.query(Budget).filter(Budget.trip_id == trip_id).first()
+        # 注意：预算信息现在直接在Trip模型中
+        # 不需要单独更新Budget表（已删除）
+        # 如果需要缓存花费金额，可以考虑在Trip模型中添加spent_amount字段
+        # 或者在查询时实时计算
         
-        if budget:
-            budget.spent_amount = spent_amount
-            budget.remaining_amount = budget.total_budget - spent_amount
-            self.db.commit()
-        else:
-            # 从行程中获取预算
-            trip = self.db.query(Trip).filter(Trip.id == trip_id).first()
-            if trip and trip.budget:
-                budget = Budget(
-                    id=str(uuid.uuid4()),
-                    trip_id=trip_id,
-                    total_budget=trip.budget,
-                    spent_amount=spent_amount,
-                    remaining_amount=trip.budget - spent_amount
-                )
-                self.db.add(budget)
-                self.db.commit()
+        # 这里暂时不做任何操作，因为预算统计可以通过查询Expense实时计算
+        pass

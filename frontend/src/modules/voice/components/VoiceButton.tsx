@@ -7,7 +7,6 @@ import { Button, Tooltip, message } from 'antd';
 import { 
   AudioOutlined, 
   StopOutlined, 
-  PauseOutlined, 
   PlayCircleOutlined 
 } from '@ant-design/icons';
 import { useVoiceInput } from '../hooks/useVoiceInput';
@@ -49,7 +48,6 @@ const VoiceButton: React.FC<VoiceButtonProps> = ({
     stopRecording,
     pauseRecording,
     resumeRecording,
-    clearResults,
     isInitialized
   } = useVoiceInput({
     onResult: (result) => {
@@ -114,7 +112,7 @@ const VoiceButton: React.FC<VoiceButtonProps> = ({
     const bars = waveContainer.querySelectorAll('.voice-wave-bar');
     
     const animate = () => {
-      bars.forEach((bar, index) => {
+      bars.forEach((bar) => {
         const height = Math.random() * 100;
         (bar as HTMLElement).style.height = `${height}%`;
       });
@@ -187,7 +185,7 @@ const VoiceButton: React.FC<VoiceButtonProps> = ({
         <Button
           type={getButtonType() as any}
           size={size}
-          disabled={isDisabled}
+          disabled={isDisabled as boolean}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}

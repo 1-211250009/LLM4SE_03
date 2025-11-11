@@ -164,57 +164,122 @@ class BaiduMapTools:
                 "error": f"POI搜索异常: {str(e)}"
             }
     
-    def calculate_route(self, origin: str, destination: str, 
+    def calculate_route(self, origin: Dict[str, float], destination: Dict[str, float], 
                        mode: str = "driving") -> Dict[str, Any]:
         """
         计算路线
         
         Args:
-            origin: 起点
-            destination: 终点
+            origin: 起点坐标 {"lat": 39.9042, "lng": 116.4074}
+            destination: 终点坐标 {"lat": 39.9042, "lng": 116.4074}
             mode: 交通方式 (driving, transit, walking, bicycling)
             
         Returns:
-            路线计算结果
+            路线计算结果，包含overview_polyline和bounds
         """
         try:
+            # 转换坐标为字符串格式
+            origin_str = f"{origin.get('lat', 0)},{origin.get('lng', 0)}"
+            destination_str = f"{destination.get('lat', 0)},{destination.get('lng', 0)}"
+            
             # 构建路线规划参数
             params = {
-                "origin": origin,
-                "destination": destination,
-                "mode": mode,
+                "origin": origin_str,
+                "destination": destination_str,
                 "output": "json",
-                "ak": self.api_key
+                "ak": self.api_key,
+                "tactics": "11"  # 不走高速
             }
             
             # 调用百度地图路线规划API
-            url = f"{self.base_url}/direction/v2/{mode}"
+            # 注意：百度地图API v2使用direction/v2/driving
+            url = f"{self.base_url}/direction/v2/driving"
+            
+            if mode == "walking":
+                url = f"{self.base_url}/direction/v2/walking"
+            elif mode == "transit":
+                url = f"{self.base_url}/direction/v2/transit"
+            elif mode == "riding":
+                url = f"{self.base_url}/direction/v2/riding"
+            
+            print(f"DEBUG: 路线规划API调用 - URL: {url}")
+            print(f"DEBUG: 参数: {params}")
+            
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             
             data = response.json()
+            print(f"DEBUG: 路线规划API响应: {data}")
             
             if data.get("status") == 0:
-                route = data.get("result", {}).get("routes", [{}])[0]
+                result = data.get("result", {})
+                routes = result.get("routes", [])
+                
+                if routes and len(routes) > 0:
+                    route = routes[0]
+                    
+                    # 提取路径点和边界
+                    steps = route.get("steps", [])
+                    points = []
+                    bounds = {
+                        "southwest": {"lat": float('inf'), "lng": float('inf')},
+                        "northeast": {"lat": float('-inf'), "lng": float('-inf')}
+                    }
+                    
+                    # 构建路径折线
+                    # 注意：百度地图API返回的path格式是 lng,lat;lng,lat;...（经度在前，纬度在后）
+                    for step in steps:
+                        path = step.get("path", "")
+                        if path:
+                            # path格式：lng1,lat1;lng2,lat2;...
+                            step_points = path.split(';')
+                            for point_str in step_points:
+                                if point_str and point_str.strip():
+                                    coords = point_str.split(',')
+                                    if len(coords) == 2:
+                                        lng = float(coords[0].strip())  # 第一个是经度
+                                        lat = float(coords[1].strip())  # 第二个是纬度
+                                        points.append(f"{lng},{lat}")  # 保持 lng,lat 格式
+                                        
+                                        # 更新边界
+                                        bounds["southwest"]["lat"] = min(bounds["southwest"]["lat"], lat)
+                                        bounds["southwest"]["lng"] = min(bounds["southwest"]["lng"], lng)
+                                        bounds["northeast"]["lat"] = max(bounds["northeast"]["lat"], lat)
+                                        bounds["northeast"]["lng"] = max(bounds["northeast"]["lng"], lng)
+                    
+                    # 生成overview_polyline（分号分隔的点字符串）
+                    overview_polyline = ";".join(points)
                 
                 return {
                     "success": True,
                     "data": {
                         "distance": route.get("distance", 0),
                         "duration": route.get("duration", 0),
-                        "steps": route.get("steps", []),
+                            "overview_polyline": overview_polyline,
+                            "bounds": bounds,
+                            "steps": steps,
                         "mode": mode,
-                        "origin": origin,
-                        "destination": destination
+                        "origin": {
+                            "lat": float(origin.get("lat", 0)),
+                            "lng": float(origin.get("lng", 0))
+                        },
+                        "destination": {
+                            "lat": float(destination.get("lat", 0)),
+                            "lng": float(destination.get("lng", 0))
+                        }
+                        }
                     }
-                }
             else:
                 return {
                     "success": False,
-                    "error": f"路线计算失败: {data.get('message', '未知错误')}"
+                    "error": f"路线计算失败: {data.get('message', '未知错误')}",
+                    "status": data.get("status")
                 }
                 
         except Exception as e:
+            print(f"路线计算异常: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 "success": False,
                 "error": f"路线计算异常: {str(e)}"

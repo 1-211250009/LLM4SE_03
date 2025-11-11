@@ -3,7 +3,7 @@
  * 百度地图的主要容器组件
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef} from 'react';
 import { useMap } from '../hooks/useMap';
 import { MapConfig, MapMarker, RouteInfo } from '../types/map.types';
 import { Spin, Alert } from 'antd';
@@ -16,6 +16,7 @@ interface MapContainerProps {
   routes?: RouteInfo[];
   onMapClick?: (point: { lat: number; lng: number }) => void;
   onMarkerClick?: (marker: MapMarker) => void;
+  onMapReady?: (focusToPoint: (point: { lat: number; lng: number }, zoom?: number) => void) => void;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -26,18 +27,36 @@ const MapContainer: React.FC<MapContainerProps> = ({
   markers = [],
   routes = [],
   onMapClick,
+  onMapReady,
   // onMarkerClick, // 暂时未使用
   className = '',
   style = {}
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const onMapReadyRef = useRef(onMapReady);
+  
+  // 更新 ref 当 onMapReady 改变时
+  useEffect(() => {
+    onMapReadyRef.current = onMapReady;
+  }, [onMapReady]);
   
   const {
     mapState,
     addMarker,
     clearMarkers,
-    getMapInstance
+    getMapInstance,
+    setCenter
   } = useMap(containerId, config);
+  
+  // 暴露聚焦函数给外部 - 使用 ref 避免无限循环
+  useEffect(() => {
+    if (!mapState.isLoading && onMapReadyRef.current) {
+      const focusToPoint = (point: { lat: number; lng: number }, zoom: number = 16) => {
+        setCenter(point, zoom);
+      };
+      onMapReadyRef.current(focusToPoint);
+    }
+  }, [mapState.isLoading, setCenter]);
 
   // 处理标记变化
   useEffect(() => {
@@ -54,51 +73,183 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
   // 处理路线变化
   useEffect(() => {
-    if (mapState.isLoading || !routes.length) return;
+    // 确保地图已完全加载
+    if (mapState.isLoading || !routes.length) {
+      console.log('路线绘制等待中:', { isLoading: mapState.isLoading, routesCount: routes.length });
+      return;
+    }
 
     const mapInstance = getMapInstance();
-    if (!mapInstance) return;
-
-    // 清除现有路线
-    mapInstance.clearOverlays();
-
-    // 重新添加标记
-    markers.forEach(marker => {
-      addMarker(marker);
-    });
-
-    // 添加路线
-    routes.forEach((route, index) => {
-      if (route.overview_polyline) {
-        try {
-          // 解析路线折线
-          const points = route.overview_polyline.split(';').map(pointStr => {
-            const [lng, lat] = pointStr.split(',').map(Number);
-            return new window.BMap.Point(lng, lat);
-          });
-
-          // 创建折线
-          const polyline = new window.BMap.Polyline(points, {
-            strokeColor: index === 0 ? '#1890ff' : '#52c41a',
-            strokeWeight: 4,
-            strokeOpacity: 0.8
-          });
-
-          mapInstance.addOverlay(polyline);
-
-          // 调整地图视野以包含路线
-          if (route.bounds) {
-            const bounds = new window.BMap.Bounds(
-              new window.BMap.Point(route.bounds.southwest.lng, route.bounds.southwest.lat),
-              new window.BMap.Point(route.bounds.northeast.lng, route.bounds.northeast.lat)
-            );
-            mapInstance.setViewport(bounds);
-          }
-        } catch (error) {
-          console.error('Error drawing route:', error);
+    if (!mapInstance) {
+      console.warn('地图实例未准备好，延迟绘制路线');
+      // 延迟重试 - 使用 forceUpdate 或直接重新执行 useEffect
+      const timer = setTimeout(() => {
+        const retryInstance = getMapInstance();
+        if (retryInstance && routes.length > 0) {
+          console.log('重试绘制路线');
+          // 通过重新检查来触发绘制
+          // 由于 routes 依赖项会触发重新渲染，这里不需要手动触发
         }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+
+    // 清除现有路线（但保留标记）
+    try {
+      // 只清除折线，保留标记
+      const overlays = mapInstance.getOverlays();
+      overlays.forEach((overlay: any) => {
+        if (overlay instanceof window.BMap.Polyline) {
+          mapInstance.removeOverlay(overlay);
+        }
+      });
+    } catch (error) {
+      console.warn('清除路线时出错，使用clearOverlays:', error);
+      mapInstance.clearOverlays();
+    }
+
+    // 重新添加标记（如果还没有添加）
+    markers.forEach(marker => {
+      try {
+        addMarker(marker);
+      } catch (error) {
+        console.error('添加标记失败:', error, marker);
       }
     });
+
+    // 添加路线 - 使用蓝色线条显示所有路线
+    console.log('开始绘制路线，路线数量:', routes.length);
+    routes.forEach((route, index) => {
+      console.log(`路线 ${index + 1}:`, {
+        hasPolyline: !!route.overview_polyline,
+        polylineLength: route.overview_polyline?.length,
+        hasSteps: !!(route as any).steps,
+        dayNumber: (route as any).day_number
+      });
+      
+      let pointStrings: string[] = [];
+      
+      // 优先使用 overview_polyline
+      if (route.overview_polyline && route.overview_polyline.trim().length > 0) {
+        pointStrings = route.overview_polyline.split(';').filter(str => str.trim().length > 0);
+        console.log(`路线 ${index + 1} 使用 overview_polyline，包含 ${pointStrings.length} 个点`);
+      } 
+      // 如果 overview_polyline 为空，尝试从 steps 中提取
+      else if ((route as any).steps && Array.isArray((route as any).steps)) {
+        console.log(`路线 ${index + 1} 从 steps 中提取路径点`);
+        const steps = (route as any).steps;
+        steps.forEach((step: any) => {
+          if (step.path) {
+            // step.path 格式：lng,lat;lng,lat;...（百度地图API返回的格式）
+            const stepPoints = step.path.split(';').filter((str: string) => str.trim().length > 0);
+            stepPoints.forEach((pointStr: string) => {
+              const coords = pointStr.split(',');
+              if (coords.length === 2) {
+                const lng = parseFloat(coords[0].trim());  // 第一个是经度
+                const lat = parseFloat(coords[1].trim());  // 第二个是纬度
+                if (!isNaN(lat) && !isNaN(lng)) {
+                  pointStrings.push(`${lng},${lat}`); // 保持 lng,lat 格式
+                }
+              }
+            });
+          }
+        });
+        console.log(`路线 ${index + 1} 从 steps 提取出 ${pointStrings.length} 个点`);
+      }
+      // 如果都没有，尝试使用起点和终点作为特征点（简化方案）
+      else if ((route as any).origin && (route as any).destination) {
+        console.log(`路线 ${index + 1} 使用起点和终点作为特征点`);
+        const origin = (route as any).origin;
+        const dest = (route as any).destination;
+        if (origin.lng && origin.lat && dest.lng && dest.lat) {
+          pointStrings.push(`${origin.lng},${origin.lat}`);
+          pointStrings.push(`${dest.lng},${dest.lat}`);
+        }
+      }
+      
+      if (pointStrings.length === 0) {
+        console.warn(`路线 ${index + 1} 没有有效的点数据`, route);
+        return;
+      }
+      
+      console.log(`路线 ${index + 1} 解析出 ${pointStrings.length} 个点`);
+      
+      try {
+        const points = pointStrings.map(pointStr => {
+          const parts = pointStr.split(',');
+          if (parts.length !== 2) {
+            throw new Error(`无效的点格式: ${pointStr}`);
+          }
+          const lng = parseFloat(parts[0].trim());
+          const lat = parseFloat(parts[1].trim());
+          
+          if (isNaN(lng) || isNaN(lat)) {
+            throw new Error(`无效的坐标值: ${pointStr}`);
+          }
+          
+          return new window.BMap.Point(lng, lat);
+        });
+
+        if (points.length === 0) {
+          console.warn(`路线 ${index + 1} 解析后没有有效点`);
+          return;
+        }
+
+        // 使用蓝色显示所有路线
+        const routeColor = '#1890ff'; // 蓝色
+
+        // 创建折线
+        const polyline = new window.BMap.Polyline(points, {
+          strokeColor: routeColor,
+          strokeWeight: 4,
+          strokeOpacity: 0.8
+        });
+
+        mapInstance.addOverlay(polyline);
+        console.log(`路线 ${index + 1} 绘制成功，包含 ${points.length} 个点`);
+
+      } catch (error) {
+        console.error(`路线 ${index + 1} 绘制失败:`, error, route);
+      }
+    });
+    
+    // 调整地图视野以包含所有标记和路线
+    if (markers.length > 0) {
+      try {
+        const points = markers
+          .filter(m => m.poi?.location)
+          .map(m => new window.BMap.Point(m.poi!.location!.lng, m.poi!.location!.lat));
+        
+        if (points.length > 0) {
+          // 使用百度地图的getViewport方法计算最佳视野
+          const viewport = mapInstance.getViewport(points, {
+            margins: [50, 50, 50, 50]
+          });
+          
+          if (viewport) {
+            mapInstance.centerAndZoom(viewport.center, viewport.zoom);
+          }
+        }
+      } catch (error) {
+        console.error('Error adjusting map viewport:', error);
+        // 如果getViewport失败，使用简单的bounds计算
+        try {
+          if (markers.length > 0) {
+            const points = markers
+              .filter(m => m.poi?.location)
+              .map(m => new window.BMap.Point(m.poi!.location!.lng, m.poi!.location!.lat));
+            
+            if (points.length > 0) {
+              const bounds = new window.BMap.Bounds(points[0], points[0]);
+              points.forEach(point => bounds.extend(point));
+              mapInstance.setViewport([bounds]);
+            }
+          }
+        } catch (fallbackError) {
+          console.error('Error in fallback viewport adjustment:', fallbackError);
+        }
+      }
+    }
   }, [routes, mapState.isLoading, markers, getMapInstance, addMarker]);
 
   // 处理地图点击事件

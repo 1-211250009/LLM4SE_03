@@ -1,9 +1,20 @@
 # 前端环境变量配置模板
 # 复制此文件为 .env.local 并填入真实值
 
-# 百度地图API配置
+# API基础URL
+VITE_API_BASE_URL=http://localhost:8000
+
+# 百度地图API Key
 VITE_BAIDU_MAPS_API_KEY=your_baidu_maps_api_key_here
 
-# 其他前端API配置
-VITE_API_BASE_URL=http://localhost:8000
+# 科大讯飞语音服务配置（可选，如不配置则语音功能将被禁用）
+# 申请地址: https://www.xfyun.cn/
+VITE_XUNFEI_APP_ID=
+VITE_XUNFEI_API_KEY=
+VITE_XUNFEI_API_SECRET=
+
+# 功能开关
+VITE_ENABLE_VOICE=false  # 是否启用语音功能（需要配置科大讯飞）
+
+# 应用配置
 VITE_APP_TITLE=AI旅行规划师

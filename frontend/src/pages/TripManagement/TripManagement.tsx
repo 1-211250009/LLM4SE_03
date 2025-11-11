@@ -34,8 +34,7 @@ import {
   WalletOutlined
 } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
-import { VoiceButton } from '../../modules/voice';
-import { VoiceCommand } from '../../modules/voice/types/voice.types';
+import TripAIAssistant from '../../components/trip/TripAIAssistant';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 
@@ -52,6 +51,9 @@ interface Trip {
   end_date?: string;
   duration_days: number;
   budget?: number;
+  budget_total?: number;
+  currency?: string;
+  traveler_count?: number;
   status: 'draft' | 'planned' | 'active' | 'completed' | 'cancelled';
   is_public: boolean;
   tags?: string[];
@@ -141,6 +143,15 @@ const TripManagement = () => {
     }
   }, [accessToken]);
 
+  // 计算行程天数
+  const calculateDurationDays = (startDate: dayjs.Dayjs | null, endDate: dayjs.Dayjs | null): number => {
+    if (!startDate || !endDate) return 1;
+    // 计算天数：结束日期 - 开始日期 + 1
+    // 例如：2025-11-11 到 2025-11-11 是1天
+    const diff = endDate.diff(startDate, 'day');
+    return Math.max(1, diff + 1);
+  };
+
   // 创建或更新行程
   const handleSubmit = async (values: any) => {
     if (!accessToken) return;
@@ -153,6 +164,9 @@ const TripManagement = () => {
       
       const method = editingTrip ? 'PUT' : 'POST';
       
+      // 自动计算行程天数
+      const durationDays = calculateDurationDays(values.start_date, values.end_date);
+      
       const response = await fetch(url, {
         method,
         headers: {
@@ -163,7 +177,12 @@ const TripManagement = () => {
           ...values,
           start_date: values.start_date?.toISOString(),
           end_date: values.end_date?.toISOString(),
-          tags: values.tags || []
+          duration_days: durationDays,  // 使用计算得到的天数
+          tags: values.tags || [],
+          budget_total: values.budget_total || null,
+          currency: values.currency || 'CNY',
+          traveler_count: values.traveler_count || 1,
+          preferences: values.preferences || {}
         })
       });
 
@@ -215,7 +234,10 @@ const TripManagement = () => {
     form.setFieldsValue({
       ...trip,
       start_date: trip.start_date ? dayjs(trip.start_date) : null,
-      end_date: trip.end_date ? dayjs(trip.end_date) : null
+      end_date: trip.end_date ? dayjs(trip.end_date) : null,
+      budget_total: trip.budget_total || null,
+      currency: trip.currency || 'CNY',
+      traveler_count: trip.traveler_count || 1
     });
     setModalVisible(true);
   };
@@ -225,30 +247,15 @@ const TripManagement = () => {
     navigate(`/trip/${trip.id}`);
   };
 
-  // 语音命令处理
-  const handleVoiceCommand = useCallback((command: VoiceCommand) => {
-    console.log('Voice command:', command);
-    
-    if (command.type === 'plan_trip') {
-      // 解析语音命令中的行程信息
-      const entities = command.entities || {};
-      const locations = entities.locations || [];
-      const duration = entities.duration || 1;
-      const budget = entities.budget || 0;
-      
-      // 自动填充表单
-      form.setFieldsValue({
-        title: `语音创建的行程 - ${locations.join(', ')}`,
-        destination: locations[0] || '',
-        duration_days: duration,
-        budget: budget,
-        description: `通过语音创建的行程，包含地点：${locations.join(', ')}`
-      });
-      
-      setModalVisible(true);
-      message.success('语音命令已识别，请完善行程信息');
-    }
-  }, [form]);
+  // 处理AI创建的行程
+  const handleTripCreated = useCallback(() => {
+    message.success('行程创建成功！');
+    // 刷新行程列表
+    fetchTrips(pagination.current, pagination.pageSize);
+    fetchStats();
+    // 可选：跳转到行程详情页
+    // navigate(`/trip/${tripId}`);
+  }, [fetchTrips, fetchStats, pagination]);
 
   // 表格列定义
   const columns = [
@@ -305,13 +312,13 @@ const TripManagement = () => {
     },
     {
       title: '预算',
-      dataIndex: 'budget',
-      key: 'budget',
-      render: (budget: number) => (
-        budget ? (
+      dataIndex: 'budget_total',
+      key: 'budget_total',
+      render: (budget_total: number) => (
+        budget_total ? (
           <div style={{ fontSize: '12px' }}>
             <DollarOutlined style={{ marginRight: 4 }} />
-            ¥{budget.toLocaleString()}
+            ¥{budget_total.toLocaleString()}
           </div>
         ) : '-'
       )
@@ -442,11 +449,7 @@ const TripManagement = () => {
             </p>
           </div>
           <Space>
-            <VoiceButton
-              onCommand={handleVoiceCommand}
-              type="primary"
-              size="middle"
-            />
+            <TripAIAssistant onTripCreated={handleTripCreated} />
             <Button 
               type="primary" 
               icon={<PlusOutlined />}
@@ -528,15 +531,17 @@ const TripManagement = () => {
             </Col>
             <Col span={12}>
               <Form.Item
-                name="duration_days"
                 label="行程天数"
-                rules={[{ required: true, message: '请输入行程天数' }]}
               >
-                <InputNumber 
-                  min={1} 
-                  max={365} 
+                <Input
                   style={{ width: '100%' }}
-                  placeholder="请输入行程天数"
+                  value={
+                    form.getFieldValue('start_date') && form.getFieldValue('end_date')
+                      ? `${calculateDurationDays(form.getFieldValue('start_date'), form.getFieldValue('end_date'))} 天`
+                      : '自动计算'
+                  }
+                  disabled
+                  placeholder="自动计算"
                 />
               </Form.Item>
             </Col>
@@ -547,10 +552,24 @@ const TripManagement = () => {
               <Form.Item
                 name="start_date"
                 label="开始日期"
+                rules={[{ required: true, message: '请选择开始日期' }]}
               >
                 <DatePicker 
                   style={{ width: '100%' }}
+                  format="YYYY-MM-DD"
                   placeholder="选择开始日期"
+                  onChange={() => {
+                    // 当开始日期改变时，触发表单更新
+                    form.setFieldsValue({});
+                  }}
+                  disabledDate={(current) => {
+                    // 结束日期不能早于开始日期
+                    const endDate = form.getFieldValue('end_date');
+                    if (endDate && current && current.isAfter(endDate, 'day')) {
+                      return true;
+                    }
+                    return false;
+                  }}
                 />
               </Form.Item>
             </Col>
@@ -558,10 +577,24 @@ const TripManagement = () => {
               <Form.Item
                 name="end_date"
                 label="结束日期"
+                rules={[{ required: true, message: '请选择结束日期' }]}
               >
                 <DatePicker 
                   style={{ width: '100%' }}
+                  format="YYYY-MM-DD"
                   placeholder="选择结束日期"
+                  onChange={() => {
+                    // 当结束日期改变时，触发表单更新
+                    form.setFieldsValue({});
+                  }}
+                  disabledDate={(current) => {
+                    // 结束日期不能早于开始日期
+                    const startDate = form.getFieldValue('start_date');
+                    if (startDate && current && current.isBefore(startDate, 'day')) {
+                      return true;
+                    }
+                    return false;
+                  }}
                 />
               </Form.Item>
             </Col>
@@ -570,14 +603,48 @@ const TripManagement = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                name="budget"
-                label="预算（元）"
+                name="budget_total"
+                label="总预算"
               >
                 <InputNumber 
                   min={0} 
                   style={{ width: '100%' }}
-                  placeholder="请输入预算"
+                  placeholder="请输入预算金额"
+                  addonAfter="元"
                 />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="traveler_count"
+                label="同行人数"
+                initialValue={1}
+              >
+                <InputNumber 
+                  min={1}
+                  max={100}
+                  style={{ width: '100%' }}
+                  placeholder="同行人数"
+                  addonAfter="人"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="currency"
+                label="货币单位"
+                initialValue="CNY"
+              >
+                <Select placeholder="选择货币">
+                  <Option value="CNY">人民币 (CNY)</Option>
+                  <Option value="USD">美元 (USD)</Option>
+                  <Option value="EUR">欧元 (EUR)</Option>
+                  <Option value="JPY">日元 (JPY)</Option>
+                  <Option value="HKD">港币 (HKD)</Option>
+                </Select>
               </Form.Item>
             </Col>
             <Col span={12}>

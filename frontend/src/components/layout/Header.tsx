@@ -107,7 +107,8 @@ const Header = ({ onToggleChat, isChatOpen }: HeaderProps) => {
             </Link>
             {isAuthenticated && (
               <>
-                <Link
+                {/* 行程规划链接已隐藏，但保留代码以便将来使用 */}
+                {/* <Link
                   to="/trip-planning"
                   style={{ 
                     color: '#374151', 
@@ -137,7 +138,7 @@ const Header = ({ onToggleChat, isChatOpen }: HeaderProps) => {
                   }}
                 >
                   行程规划
-                </Link>
+                </Link> */}
                 <Link
                   to="/trips"
                   style={{ 

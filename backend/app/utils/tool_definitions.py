@@ -138,11 +138,206 @@ def get_plan_trip_tool() -> Dict[str, Any]:
         }
     }
 
+def get_create_trip_tool() -> Dict[str, Any]:
+    """获取创建行程工具定义"""
+    return {
+        "type": "function",
+        "function": {
+            "name": "create_trip",
+            "description": "创建新的旅行行程",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "行程标题"
+                    },
+                    "destination": {
+                        "type": "string",
+                        "description": "目的地"
+                    },
+                    "duration_days": {
+                        "type": "integer",
+                        "description": "行程天数"
+                    },
+                    "budget": {
+                        "type": "number",
+                        "description": "预算金额"
+                    },
+                    "traveler_count": {
+                        "type": "integer",
+                        "description": "同行人数",
+                        "default": 1
+                    },
+                    "preferences": {
+                        "type": "object",
+                        "description": "用户偏好（如美食、购物、文化等）"
+                    }
+                },
+                "required": ["title", "destination", "duration_days"]
+            }
+        }
+    }
+
+def get_add_itinerary_item_tool() -> Dict[str, Any]:
+    """获取添加行程节点工具定义"""
+    return {
+        "type": "function",
+        "function": {
+            "name": "add_itinerary_item",
+            "description": "向行程中添加一个新的节点（景点、餐厅、酒店等）",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "trip_id": {
+                        "type": "string",
+                        "description": "行程ID"
+                    },
+                    "day_number": {
+                        "type": "integer",
+                        "description": "第几天"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "节点名称"
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "节点类别",
+                        "enum": ["attraction", "restaurant", "hotel", "transport", "shopping", "other"]
+                    },
+                    "address": {
+                        "type": "string",
+                        "description": "地址"
+                    },
+                    "coordinates": {
+                        "type": "object",
+                        "description": "坐标",
+                        "properties": {
+                            "lat": {"type": "number"},
+                            "lng": {"type": "number"}
+                        }
+                    },
+                    "start_time": {
+                        "type": "string",
+                        "description": "开始时间（HH:MM格式）"
+                    },
+                    "estimated_duration": {
+                        "type": "integer",
+                        "description": "预计停留时长（分钟）"
+                    },
+                    "estimated_cost": {
+                        "type": "number",
+                        "description": "预计费用"
+                    }
+                },
+                "required": ["trip_id", "day_number", "name", "category"]
+            }
+        }
+    }
+
+def get_add_expense_tool() -> Dict[str, Any]:
+    """获取添加费用工具定义"""
+    return {
+        "type": "function",
+        "function": {
+            "name": "add_expense",
+            "description": "记录一笔旅行费用",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "trip_id": {
+                        "type": "string",
+                        "description": "行程ID"
+                    },
+                    "amount": {
+                        "type": "number",
+                        "description": "金额"
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "费用类别",
+                        "enum": ["transportation", "accommodation", "food", "attraction", "shopping", "other"]
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "费用描述"
+                    },
+                    "itinerary_item_id": {
+                        "type": "string",
+                        "description": "关联的行程节点ID（可选）"
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "消费地点"
+                    }
+                },
+                "required": ["trip_id", "amount", "category"]
+            }
+        }
+    }
+
+def get_query_trip_budget_tool() -> Dict[str, Any]:
+    """获取查询行程预算工具定义"""
+    return {
+        "type": "function",
+        "function": {
+            "name": "query_trip_budget",
+            "description": "查询行程的预算使用情况",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "trip_id": {
+                        "type": "string",
+                        "description": "行程ID"
+                    }
+                },
+                "required": ["trip_id"]
+            }
+        }
+    }
+
+def get_list_trips_tool() -> Dict[str, Any]:
+    """获取查询行程列表工具定义"""
+    return {
+        "type": "function",
+        "function": {
+            "name": "list_trips",
+            "description": "获取用户的行程列表",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "行程状态筛选",
+                        "enum": ["all", "draft", "planned", "active", "completed"],
+                        "default": "all"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "返回数量限制",
+                        "default": 10
+                    }
+                }
+            }
+        }
+    }
+
 def get_all_tools() -> List[Dict[str, Any]]:
     """获取所有工具定义"""
     return [
+        # 地图相关工具
         get_poi_search_tool(),
         get_route_calculation_tool(),
         get_mark_location_tool(),
-        get_plan_trip_tool()
+        
+        # 行程管理工具
+        get_create_trip_tool(),
+        get_add_itinerary_item_tool(),
+        get_plan_trip_tool(),
+        get_list_trips_tool(),
+        
+        # 费用管理工具
+        get_add_expense_tool(),
+        get_query_trip_budget_tool()
     ]

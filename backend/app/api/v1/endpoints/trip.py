@@ -5,18 +5,17 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, func
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
-from app.models.trip import Trip as TripModel, Itinerary as ItineraryModel, ItineraryItem as ItineraryItemModel, Expense as ExpenseModel, Budget as BudgetModel
+from app.models.trip import Trip as TripModel, Itinerary as ItineraryModel, ItineraryItem as ItineraryItemModel, Expense as ExpenseModel
 from app.schemas.trip import (
     TripCreate, TripUpdate, Trip, TripListResponse,
     ItineraryCreate, ItineraryUpdate, Itinerary,
     ItineraryItemCreate, ItineraryItemUpdate, ItineraryItem,
     ExpenseCreate, ExpenseUpdate, Expense, ExpenseListResponse,
-    BudgetCreate, BudgetUpdate, Budget,
     TripStats, ExpenseStats
 )
 
@@ -31,6 +30,41 @@ async def create_trip(
 ):
     """创建新行程"""
     try:
+        # 自动计算行程天数
+        duration_days = trip_data.duration_days if trip_data.duration_days else 1
+        if trip_data.start_date and trip_data.end_date:
+            # 计算天数：结束日期 - 开始日期 + 1
+            # 例如：2025-11-11 到 2025-11-11 是 1 天
+            # 例如：2025-11-11 到 2025-11-13 是 3 天
+            try:
+                start_date = trip_data.start_date
+                end_date = trip_data.end_date
+                
+                # 转换为date对象
+                if isinstance(start_date, datetime):
+                    start_day = start_date.date()
+                elif hasattr(start_date, 'date'):
+                    start_day = start_date.date()
+                else:
+                    start_day = start_date
+                    
+                if isinstance(end_date, datetime):
+                    end_day = end_date.date()
+                elif hasattr(end_date, 'date'):
+                    end_day = end_date.date()
+                else:
+                    end_day = end_date
+                
+                # 计算天数差
+                if hasattr(start_day, '__sub__') and hasattr(end_day, '__sub__'):
+                    duration_days = (end_day - start_day).days + 1
+                    duration_days = max(1, duration_days)  # 至少1天
+            except Exception as e:
+                print(f"计算行程天数时出错: {e}, 使用默认值1")
+                import traceback
+                traceback.print_exc()
+                duration_days = 1
+        
         # 创建行程
         trip = TripModel(
             user_id=current_user.id,
@@ -39,11 +73,14 @@ async def create_trip(
             destination=trip_data.destination,
             start_date=trip_data.start_date,
             end_date=trip_data.end_date,
-            duration_days=trip_data.duration_days,
-            budget=trip_data.budget,
+            duration_days=duration_days,  # 使用自动计算的天数
+            budget_total=trip_data.budget_total,
+            currency=trip_data.currency,
             status=trip_data.status,
             is_public=trip_data.is_public,
-            tags=trip_data.tags or []
+            tags=trip_data.tags or [],
+            preferences=trip_data.preferences or {},
+            traveler_count=trip_data.traveler_count
         )
         
         db.add(trip)
@@ -57,17 +94,7 @@ async def create_trip(
                     day_number=itinerary_data.day_number,
                     date=itinerary_data.date,
                     title=itinerary_data.title,
-                    description=itinerary_data.description,
-                    start_time=itinerary_data.start_time,
-                    end_time=itinerary_data.end_time,
-                    location=itinerary_data.location,
-                    coordinates=itinerary_data.coordinates.dict() if itinerary_data.coordinates else None,
-                    category=itinerary_data.category,
-                    priority=itinerary_data.priority,
-                    estimated_duration=itinerary_data.estimated_duration,
-                    estimated_cost=itinerary_data.estimated_cost,
-                    notes=itinerary_data.notes,
-                    is_completed=itinerary_data.is_completed
+                    description=itinerary_data.description
                 )
                 
                 db.add(itinerary)
@@ -82,8 +109,12 @@ async def create_trip(
                             name=item_data.name,
                             description=item_data.description,
                             address=item_data.address,
-                            coordinates=item_data.coordinates.dict() if item_data.coordinates else None,
+                            coordinates=item_data.coordinates.model_dump() if item_data.coordinates else None,
                             category=item_data.category,
+                            start_time=item_data.start_time,
+                            end_time=item_data.end_time,
+                            estimated_duration=item_data.estimated_duration,
+                            estimated_cost=item_data.estimated_cost,
                             rating=item_data.rating,
                             price_level=item_data.price_level,
                             phone=item_data.phone,
@@ -91,8 +122,8 @@ async def create_trip(
                             opening_hours=item_data.opening_hours,
                             images=item_data.images or [],
                             order_index=item_data.order_index,
-                            is_visited=item_data.is_visited,
-                            visit_notes=item_data.visit_notes
+                            is_completed=item_data.is_completed,
+                            notes=item_data.notes
                         )
                         db.add(item)
         
@@ -156,7 +187,13 @@ async def get_trip(
 ):
     """获取行程详情"""
     try:
-        trip = db.query(TripModel).filter(
+        from sqlalchemy.orm import joinedload
+        
+        # 使用joinedload预加载关联数据
+        trip = db.query(TripModel).options(
+            joinedload(TripModel.itineraries).joinedload(ItineraryModel.items),
+            joinedload(TripModel.expenses)
+        ).filter(
             TripModel.id == trip_id,
             TripModel.user_id == current_user.id
         ).first()
@@ -190,7 +227,37 @@ async def update_trip(
             raise HTTPException(status_code=404, detail="行程不存在")
         
         # 更新字段
-        update_data = trip_data.dict(exclude_unset=True)
+        update_data = trip_data.model_dump(exclude_unset=True)
+        
+        # 如果更新了开始日期或结束日期，自动重新计算行程天数
+        if 'start_date' in update_data or 'end_date' in update_data:
+            start_date = update_data.get('start_date', trip.start_date)
+            end_date = update_data.get('end_date', trip.end_date)
+            if start_date and end_date:
+                try:
+                    # 转换为date对象
+                    if isinstance(start_date, datetime):
+                        start_day = start_date.date()
+                    elif hasattr(start_date, 'date'):
+                        start_day = start_date.date()
+                    else:
+                        start_day = start_date
+                        
+                    if isinstance(end_date, datetime):
+                        end_day = end_date.date()
+                    elif hasattr(end_date, 'date'):
+                        end_day = end_date.date()
+                    else:
+                        end_day = end_date
+                    
+                    # 计算天数差
+                    if hasattr(start_day, '__sub__') and hasattr(end_day, '__sub__'):
+                        duration_days = (end_day - start_day).days + 1
+                        update_data['duration_days'] = max(1, duration_days)  # 至少1天
+                except Exception as e:
+                    print(f"更新行程天数时出错: {e}")
+                    # 不更新duration_days，保持原值
+        
         for field, value in update_data.items():
             setattr(trip, field, value)
         
@@ -260,23 +327,13 @@ async def create_itinerary(
             day_number=itinerary_data.day_number,
             date=itinerary_data.date,
             title=itinerary_data.title,
-            description=itinerary_data.description,
-            start_time=itinerary_data.start_time,
-            end_time=itinerary_data.end_time,
-            location=itinerary_data.location,
-            coordinates=itinerary_data.coordinates.dict() if itinerary_data.coordinates else None,
-            category=itinerary_data.category,
-            priority=itinerary_data.priority,
-            estimated_duration=itinerary_data.estimated_duration,
-            estimated_cost=itinerary_data.estimated_cost,
-            notes=itinerary_data.notes,
-            is_completed=itinerary_data.is_completed
+            description=itinerary_data.description
         )
         
         db.add(itinerary)
         db.flush()
         
-        # 创建行程项目
+        # 创建行程项目（节点）
         if itinerary_data.items:
             for item_data in itinerary_data.items:
                 item = ItineraryItemModel(
@@ -285,8 +342,12 @@ async def create_itinerary(
                     name=item_data.name,
                     description=item_data.description,
                     address=item_data.address,
-                    coordinates=item_data.coordinates.dict() if item_data.coordinates else None,
+                    coordinates=item_data.coordinates.model_dump() if item_data.coordinates else None,
                     category=item_data.category,
+                    start_time=item_data.start_time,
+                    end_time=item_data.end_time,
+                    estimated_duration=item_data.estimated_duration,
+                    estimated_cost=item_data.estimated_cost,
                     rating=item_data.rating,
                     price_level=item_data.price_level,
                     phone=item_data.phone,
@@ -294,8 +355,8 @@ async def create_itinerary(
                     opening_hours=item_data.opening_hours,
                     images=item_data.images or [],
                     order_index=item_data.order_index,
-                    is_visited=item_data.is_visited,
-                    visit_notes=item_data.visit_notes
+                    is_completed=item_data.is_completed,
+                    notes=item_data.notes
                 )
                 db.add(item)
         
@@ -550,3 +611,306 @@ async def get_expense_stats(
     except Exception as e:
         print(f"Get expense stats error: {e}")
         raise HTTPException(status_code=500, detail=f"获取费用统计失败: {str(e)}")
+
+
+# ==================== 行程节点管理 ====================
+
+@router.post("/itineraries/{itinerary_id}/items", response_model=ItineraryItem)
+async def create_itinerary_item(
+    itinerary_id: str = Path(..., description="行程ID"),
+    item_data: ItineraryItemCreate = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """添加行程节点"""
+    try:
+        # 验证itinerary是否存在且属于当前用户
+        from sqlalchemy.orm import joinedload
+        
+        itinerary = db.query(ItineraryModel).options(
+            joinedload(ItineraryModel.trip)
+        ).filter(
+            ItineraryModel.id == itinerary_id
+        ).first()
+        
+        if not itinerary:
+            raise HTTPException(status_code=404, detail="行程不存在")
+        
+        if itinerary.trip.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="无权限操作此行程")
+        
+        # 创建节点
+        item = ItineraryItemModel(
+            itinerary_id=itinerary_id,
+            poi_id=item_data.poi_id,
+            name=item_data.name,
+            description=item_data.description,
+            address=item_data.address,
+            coordinates=item_data.coordinates.model_dump() if item_data.coordinates else None,
+            category=item_data.category,
+            start_time=item_data.start_time,
+            end_time=item_data.end_time,
+            estimated_duration=item_data.estimated_duration,
+            estimated_cost=item_data.estimated_cost,
+            rating=item_data.rating,
+            price_level=item_data.price_level,
+            phone=item_data.phone,
+            website=item_data.website,
+            opening_hours=item_data.opening_hours,
+            images=item_data.images or [],
+            order_index=item_data.order_index if item_data.order_index is not None else 0,
+            is_completed=item_data.is_completed if item_data.is_completed is not None else False,
+            notes=item_data.notes
+        )
+        
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+        
+        return item
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Create itinerary item error: {e}")
+        raise HTTPException(status_code=500, detail=f"添加节点失败: {str(e)}")
+
+
+@router.put("/itineraries/{itinerary_id}/items/{item_id}", response_model=ItineraryItem)
+async def update_itinerary_item(
+    itinerary_id: str = Path(..., description="行程ID"),
+    item_id: str = Path(..., description="节点ID"),
+    item_data: ItineraryItemUpdate = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """更新行程节点"""
+    try:
+        # 验证节点是否存在且有权限
+        from sqlalchemy.orm import joinedload
+        
+        item = db.query(ItineraryItemModel).options(
+            joinedload(ItineraryItemModel.itinerary).joinedload(ItineraryModel.trip)
+        ).filter(
+            ItineraryItemModel.id == item_id,
+            ItineraryItemModel.itinerary_id == itinerary_id
+        ).first()
+        
+        if not item:
+            raise HTTPException(status_code=404, detail="节点不存在")
+        
+        if item.itinerary.trip.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="无权限操作此节点")
+        
+        # 更新字段
+        update_data = item_data.model_dump(exclude_unset=True)
+        
+        # 处理coordinates
+        if 'coordinates' in update_data and update_data['coordinates']:
+            update_data['coordinates'] = update_data['coordinates']
+        
+        for field, value in update_data.items():
+            setattr(item, field, value)
+        
+        db.commit()
+        db.refresh(item)
+        
+        return item
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Update itinerary item error: {e}")
+        raise HTTPException(status_code=500, detail=f"更新节点失败: {str(e)}")
+
+
+@router.delete("/itineraries/{itinerary_id}/items/{item_id}")
+async def delete_itinerary_item(
+    itinerary_id: str = Path(..., description="行程ID"),
+    item_id: str = Path(..., description="节点ID"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """删除行程节点"""
+    try:
+        # 验证节点是否存在且有权限
+        from sqlalchemy.orm import joinedload
+        
+        item = db.query(ItineraryItemModel).options(
+            joinedload(ItineraryItemModel.itinerary).joinedload(ItineraryModel.trip)
+        ).filter(
+            ItineraryItemModel.id == item_id,
+            ItineraryItemModel.itinerary_id == itinerary_id
+        ).first()
+        
+        if not item:
+            raise HTTPException(status_code=404, detail="节点不存在")
+        
+        if item.itinerary.trip.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="无权限操作此节点")
+        
+        db.delete(item)
+        db.commit()
+        
+        return {"message": "节点删除成功"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Delete itinerary item error: {e}")
+        raise HTTPException(status_code=500, detail=f"删除节点失败: {str(e)}")
+
+
+# AI行程规划助手
+from pydantic import BaseModel, Field
+from app.services.trip_planning_ai_service import TripPlanningAIService
+
+class PlanningAIQueryRequest(BaseModel):
+    """AI行程规划查询请求模型"""
+    query: str = Field(..., description="用户查询")
+    conversation_history: Optional[List[Dict[str, str]]] = Field(None, description="对话历史")
+
+class PlanningAIQueryResponse(BaseModel):
+    """AI行程规划查询响应模型"""
+    response: str = Field(..., description="AI响应")
+    action_performed: bool = Field(False, description="是否执行了操作")
+    pending_action: Optional[Dict[str, Any]] = Field(None, description="待确认的操作（Function Call）")
+
+class PlanningExecuteActionRequest(BaseModel):
+    """执行操作请求模型"""
+    function_name: str = Field(..., description="函数名称")
+    arguments: str = Field(..., description="函数参数（JSON字符串）")
+
+@router.post("/{trip_id}/planning/ai/query", response_model=PlanningAIQueryResponse)
+async def planning_ai_query(
+    trip_id: str = Path(..., description="行程ID"),
+    request: PlanningAIQueryRequest = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """AI行程规划查询"""
+    service = TripPlanningAIService(db)
+    
+    try:
+        result = await service.process_natural_language_query(
+            query=request.query,
+            user_id=current_user.id,
+            trip_id=trip_id,
+            conversation_history=request.conversation_history
+        )
+        
+        return PlanningAIQueryResponse(
+            response=result.get('content', ''),
+            action_performed=False,
+            pending_action=result.get('pending_action')
+        )
+    except Exception as e:
+        import traceback
+        print(f"AI行程规划查询异常: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"AI查询失败: {str(e)}")
+
+@router.post("/{trip_id}/planning/ai/execute", response_model=Dict[str, Any])
+async def planning_execute_ai_action(
+    trip_id: str = Path(..., description="行程ID"),
+    request: PlanningExecuteActionRequest = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """执行AI请求的操作（Function Call）"""
+    service = TripPlanningAIService(db)
+    
+    try:
+        import json
+        arguments = json.loads(request.arguments)
+        
+        result = await service.execute_tool_call(
+            function_name=request.function_name,
+            arguments=arguments,
+            user_id=current_user.id,
+            trip_id=trip_id
+        )
+        
+        return {
+            "success": True,
+            "message": result.get('message', '操作执行成功'),
+            "data": result.get('data')
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"执行操作失败: {str(e)}")
+
+# AI创建行程助手
+from app.services.trip_ai_service import TripAIService
+
+class AIQueryRequest(BaseModel):
+    """AI查询请求模型"""
+    query: str = Field(..., description="用户查询")
+    conversation_history: Optional[List[Dict[str, Any]]] = Field(None, description="对话历史")
+
+class AIQueryResponse(BaseModel):
+    """AI查询响应模型"""
+    response: str = Field(..., description="AI响应")
+    action_performed: bool = Field(False, description="是否执行了操作")
+    pending_action: Optional[Dict[str, Any]] = Field(None, description="待确认的操作（Function Call）")
+
+class ExecuteActionRequest(BaseModel):
+    """执行操作请求模型"""
+    function_name: str = Field(..., description="函数名称")
+    arguments: str = Field(..., description="函数参数（JSON字符串）")
+
+@router.post("/ai/query", response_model=AIQueryResponse)
+async def ai_query(
+    request: AIQueryRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """AI创建行程查询"""
+    service = TripAIService(db)
+    
+    try:
+        result = await service.process_natural_language_query(
+            query=request.query,
+            user_id=current_user.id,
+            conversation_history=request.conversation_history
+        )
+        
+        return AIQueryResponse(
+            response=result.get('content', ''),
+            action_performed=False,
+            pending_action=result.get('pending_action')
+        )
+    except Exception as e:
+        import traceback
+        print(f"AI查询异常: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"AI查询失败: {str(e)}")
+
+@router.post("/ai/execute", response_model=Dict[str, Any])
+async def execute_ai_action(
+    request: ExecuteActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """执行AI请求的操作（Function Call）"""
+    service = TripAIService(db)
+    
+    try:
+        import json
+        arguments = json.loads(request.arguments)
+        
+        result = await service.execute_tool_call(
+            function_name=request.function_name,
+            arguments=arguments,
+            user_id=current_user.id
+        )
+        
+        return {
+            "success": True,
+            "message": result.get('message', '操作执行成功'),
+            "data": result.get('data')
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"执行操作失败: {str(e)}")

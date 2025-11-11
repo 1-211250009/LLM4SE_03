@@ -1,5 +1,5 @@
-import { Button, Card, Row, Col, Typography, Space, Statistic } from 'antd';
-import { RocketOutlined, GlobalOutlined, SoundOutlined, DollarOutlined, UserOutlined, CalendarOutlined, HeartOutlined } from '@ant-design/icons';
+import { Button, Card, Row, Col, Typography, Space } from 'antd';
+import { GlobalOutlined, SoundOutlined, DollarOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 
@@ -10,12 +10,13 @@ const Home = () => {
   const { isAuthenticated } = useAuthStore();
 
   const features = [
-    {
-      icon: <RocketOutlined style={{ fontSize: '48px', color: '#1890ff' }} />,
-      title: '智能行程规划',
-      description: '基于AI技术，为您量身定制个性化旅行路线',
-      color: '#1890ff',
-    },
+    // 智能行程规划功能已隐藏，但保留代码以便将来使用
+    // {
+    //   icon: <RocketOutlined style={{ fontSize: '48px', color: '#1890ff' }} />,
+    //   title: '智能行程规划',
+    //   description: '基于AI技术，为您量身定制个性化旅行路线',
+    //   color: '#1890ff',
+    // },
     {
       icon: <SoundOutlined style={{ fontSize: '48px', color: '#52c41a' }} />,
       title: '语音交互',
@@ -36,11 +37,6 @@ const Home = () => {
     },
   ];
 
-  const stats = [
-    { title: '用户数量', value: '10,000+', icon: <UserOutlined /> },
-    { title: '规划行程', value: '50,000+', icon: <CalendarOutlined /> },
-    { title: '用户满意度', value: '98%', icon: <HeartOutlined /> },
-  ];
 
   return (
     <div style={{ minHeight: '100vh' }}>
@@ -80,7 +76,7 @@ const Home = () => {
               <Button
                 type="primary"
                 size="large"
-                onClick={() => navigate('/trip-planning')}
+                onClick={() => navigate('/trips')}
                 style={{ 
                   background: 'white', 
                   color: '#1890ff', 
@@ -132,25 +128,6 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Stats Section */}
-      <section style={{ padding: '60px 0', background: '#f8f9fa' }}>
-        <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 16px' }}>
-          <Row gutter={[32, 32]} justify="center">
-            {stats.map((stat, index) => (
-              <Col xs={24} sm={8} key={index}>
-                <Card style={{ textAlign: 'center', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                  <Statistic
-                    title={stat.title}
-                    value={stat.value}
-                    prefix={stat.icon}
-                    valueStyle={{ color: '#1890ff', fontSize: '2rem', fontWeight: 'bold' }}
-                  />
-                </Card>
-              </Col>
-            ))}
-          </Row>
-        </div>
-      </section>
 
       {/* Features Section */}
       <section style={{ padding: '80px 0', background: 'white' }}>
@@ -165,9 +142,20 @@ const Home = () => {
             </Paragraph>
           </div>
 
-          <Row gutter={[32, 32]}>
+          <Row gutter={[32, 32]} justify="center" style={{ maxWidth: '1200px', margin: '0 auto' }}>
             {features.map((feature, index) => (
-              <Col xs={24} sm={12} lg={6} key={index}>
+              <Col 
+                xs={24} 
+                sm={24} 
+                md={8} 
+                lg={8} 
+                xl={8}
+                key={index}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'center'
+                }}
+              >
                 <Card
                   hoverable
                   style={{ 
@@ -176,7 +164,9 @@ const Home = () => {
                     border: 'none', 
                     boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                     transition: 'all 0.3s ease',
-                    borderRadius: '12px'
+                    borderRadius: '12px',
+                    width: '100%',
+                    maxWidth: '360px'
                   }}
                   bodyStyle={{ padding: '32px 24px' }}
                 >

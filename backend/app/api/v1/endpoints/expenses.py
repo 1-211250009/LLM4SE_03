@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 from ....core.database import get_db
 from ...deps import get_current_user
 from ....models.user import User
-from ....models.trip import Expense, Budget, Trip
-from ....schemas.expense import ExpenseCreate, ExpenseUpdate, ExpenseResponse, BudgetResponse
+from ....models.trip import Expense, Trip
+from ....schemas.expense import ExpenseCreate, ExpenseUpdate, ExpenseResponse
 from ....schemas.trip import ExpenseListResponse
 from ....services.expense_service import ExpenseService
 from ....services.expense_ai_service import ExpenseAIService
@@ -168,6 +168,7 @@ class AIQueryResponse(BaseModel):
     """AI查询响应模型"""
     response: str = Field(..., description="AI响应")
     action_performed: bool = Field(False, description="是否执行了操作")
+    pending_action: Optional[Dict[str, Any]] = Field(None, description="待确认的操作（Function Call）")
 
 
 @router.post("/ai/query", response_model=AIQueryResponse)
@@ -180,21 +181,60 @@ async def ai_query(
     service = ExpenseAIService(db)
     
     try:
-        response = await service.process_natural_language_query(
+        result = await service.process_natural_language_query(
             query=request.query,
             user_id=current_user.id,
             trip_id=request.trip_id,
             context=request.context
         )
         
-        # 检查是否执行了操作（简单判断）
-        action_performed = any(keyword in response.lower() for keyword in [
-            '已添加', '已更新', '已删除', '已创建', '已修改'
-        ])
-        
         return AIQueryResponse(
-            response=response,
-            action_performed=action_performed
+            response=result.get('content', ''),
+            action_performed=False,
+            pending_action=result.get('pending_action')
         )
     except Exception as e:
+        import traceback
+        print(f"AI查询异常: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"AI查询失败: {str(e)}")
+
+
+class ExecuteActionRequest(BaseModel):
+    """执行操作请求模型"""
+    function_name: str = Field(..., description="函数名称")
+    arguments: str = Field(..., description="函数参数（JSON字符串）")
+    trip_id: Optional[str] = Field(None, description="行程ID")
+
+
+@router.post("/ai/execute", response_model=Dict[str, Any])
+async def execute_ai_action(
+    request: ExecuteActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """执行AI请求的操作（Function Call）"""
+    service = ExpenseAIService(db)
+    
+    try:
+        import json
+        arguments = json.loads(request.arguments)
+        
+        # 确保trip_id存在
+        if not arguments.get('trip_id') and request.trip_id:
+            arguments['trip_id'] = request.trip_id
+        
+        result = await service.execute_tool_call(
+            function_name=request.function_name,
+            arguments=arguments,
+            user_id=current_user.id,
+            trip_id=request.trip_id
+        )
+        
+        return {
+            "success": True,
+            "message": result.get('message', '操作执行成功'),
+            "data": result.get('data')
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"执行操作失败: {str(e)}")

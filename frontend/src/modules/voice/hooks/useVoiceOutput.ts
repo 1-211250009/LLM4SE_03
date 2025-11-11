@@ -35,7 +35,7 @@ export function useVoiceOutput(options: UseVoiceOutputOptions = {}) {
 
   const voiceServiceRef = useRef<VoiceService | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 初始化语音服务
   useEffect(() => {

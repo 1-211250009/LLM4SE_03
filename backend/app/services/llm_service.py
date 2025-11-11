@@ -17,6 +17,65 @@ class LLMService:
     def __init__(self):
         self.encoder = AGUIEventEncoder()
     
+    async def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """
+        简单的对话完成（非流式）
+        
+        Args:
+            messages: 消息列表
+            tools: 可用工具列表
+            
+        Returns:
+            LLM响应
+        """
+        try:
+            # 调用DeepSeek API
+            response = await deepseek_llm_service.chat_completion(
+                messages=messages,
+                model="deepseek-chat",
+                temperature=0.7,
+                max_tokens=8192,
+                stream=False,
+                tools=tools
+            )
+            
+            # 解析DeepSeek API响应格式
+            # DeepSeek返回格式: {"choices": [{"message": {"content": "...", "tool_calls": [...]}}]}
+            if "choices" in response and len(response["choices"]) > 0:
+                choice = response["choices"][0]
+                message = choice.get("message", {})
+                
+                result = {
+                    "content": message.get("content", ""),
+                    "tool_calls": None
+                }
+                
+                # 检查是否有工具调用
+                if "tool_calls" in message and message["tool_calls"]:
+                    result["tool_calls"] = message["tool_calls"]
+                
+                return result
+            else:
+                # 如果响应格式不符合预期，记录日志并返回默认响应
+                print(f"Unexpected LLM response format: {response}")
+                return {
+                    "content": "抱歉，AI助手暂时无法响应，请稍后再试。",
+                    "tool_calls": None
+                }
+            
+        except Exception as e:
+            print(f"LLM chat completion error: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "content": "抱歉，AI助手暂时无法响应，请稍后再试。",
+                "tool_calls": None
+            }
+    
     async def chat_with_agui_stream(
         self,
         user_input: str,

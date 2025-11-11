@@ -1,5 +1,6 @@
 """FastAPI application entry point"""
 
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -59,6 +60,10 @@ async def health_check():
 
 
 # ===== Static Files =====
+# 创建必要的上传目录
+os.makedirs("uploads/audio", exist_ok=True)
+os.makedirs("uploads/avatars", exist_ok=True)
+
 # 挂载静态文件服务，用于访问上传的头像
 app.mount("/static", StaticFiles(directory="uploads"), name="static")
 

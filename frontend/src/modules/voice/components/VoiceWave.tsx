@@ -25,7 +25,7 @@ const VoiceWave: React.FC<VoiceWaveProps> = ({
   style
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number | undefined>(undefined);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   // 更新画布尺寸

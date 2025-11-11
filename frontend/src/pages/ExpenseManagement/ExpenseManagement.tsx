@@ -22,16 +22,20 @@ import {
   Typography,
   message,
   Popconfirm,
-  Progress
+  Progress,
+  Empty,
+  Spin,
+  Tooltip
 } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  DownloadOutlined,
   RobotOutlined,
-  DollarOutlined
+  DollarOutlined,
+  AudioOutlined
 } from '@ant-design/icons';
+import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useAuthStore } from '../../store/auth.store';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 // import { AGUIClient, AGUIEventHandler, AGUIEvent } from '../../utils/agui-client';
@@ -70,9 +74,20 @@ const ExpenseManagement: React.FC = () => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(false);
+  const [tripsLoading, setTripsLoading] = useState(true); // 添加行程列表加载状态
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiMessages, setAiMessages] = useState<Array<{role: 'user' | 'assistant', content: string}>>([]);
+  const [aiMessages, setAiMessages] = useState<Array<{role: 'user' | 'assistant', content: string, pendingAction?: any}>>([]);
   const [aiInput, setAiInput] = useState('');
+  
+  // 语音识别
+  const { isRecording, isProcessing, toggleRecording } = useSpeechRecognition({
+    onResult: (text) => {
+      setAiInput(prev => prev + (prev ? ' ' : '') + text);
+    },
+    onError: (error) => {
+      console.error('Speech recognition error:', error);
+    }
+  });
 
   // 模态框状态
   const [expenseModalVisible, setExpenseModalVisible] = useState(false);
@@ -105,25 +120,35 @@ const ExpenseManagement: React.FC = () => {
 
   // 加载行程列表
   const loadTrips = async () => {
+    setTripsLoading(true); // 开始加载
     try {
       const data = await ApiService.get<TripListResponse>('/trips/?page=1&size=100');
       setTrips(data.trips || []);
       
-      // 如果有tripId参数，自动选中该行程
+      // 如果有tripId参数，自动选中该行程并加载完整详情
       if (tripId) {
-        const trip = data.trips?.find((t: Trip) => t.id === tripId);
-        if (trip) {
-          setSelectedTrip(trip);
+        try {
+          // 加载完整的行程详情（包含itineraries和items）
+          const tripDetail = await ApiService.get<Trip>(`/trips/${tripId}`);
+          if (tripDetail) {
+            setSelectedTrip(tripDetail);
           // 加载该行程的费用和预算数据
-          loadExpenses(trip.id);
-          loadBudget(trip.id);
+            loadExpenses(tripDetail.id);
+            loadBudget(tripDetail.id);
         } else {
           message.warning('指定的行程不存在');
+          }
+        } catch (error) {
+          console.error('Failed to load trip detail:', error);
+          message.warning('加载行程详情失败');
         }
       }
     } catch (error) {
       console.error('Failed to load trips:', error);
       message.error('加载行程失败');
+      setTrips([]); // 确保在错误时设置为空数组
+    } finally {
+      setTripsLoading(false); // 加载完成
     }
   };
 
@@ -131,7 +156,12 @@ const ExpenseManagement: React.FC = () => {
   const loadExpenses = async (tripId: string) => {
     setLoading(true);
     try {
-      const data = await ApiService.get<ExpenseListResponse>(`/expenses/?trip_id=${tripId}`);
+      const data = await ApiService.get<ExpenseListResponse>(`/budgets/trips/${tripId}/expenses`);
+      console.log('Loaded expenses:', data.expenses);
+      // 调试：检查每个费用的 itinerary_item_id
+      data.expenses?.forEach((expense: Expense) => {
+        console.log(`Expense ${expense.id}: itinerary_item_id =`, expense.itinerary_item_id);
+      });
       setExpenses(data.expenses || []);
     } catch (error) {
       console.error('Failed to load expenses:', error);
@@ -145,8 +175,20 @@ const ExpenseManagement: React.FC = () => {
   // 加载预算数据
   const loadBudget = async (tripId: string) => {
     try {
-      const data = await ApiService.get<Budget[]>(`/budgets/trips/${tripId}/budgets`);
-      setBudgets(data || []);
+      const data = await ApiService.get<any>(`/budgets/trips/${tripId}/budget`);
+      // 后端返回BudgetSummaryResponse，包含total_budget, spent_amount, remaining_budget等
+      if (data) {
+        // 将预算摘要数据存储起来
+        // 注意：remaining_budget 可能为 null（当没有设置预算时），不应该转换为 0
+        setBudgets([{
+          id: tripId,
+          trip_id: tripId,
+          total_budget: data.total_budget ?? null,
+          spent_amount: data.spent_amount || 0,
+          remaining_budget: data.remaining_budget ?? null, // 保持 null，不要转换为 0
+          budget_usage_percent: data.budget_usage_percent ?? null
+        } as any]);
+      }
     } catch (error) {
       console.error('Failed to load budget:', error);
       setBudgets([]);
@@ -156,21 +198,68 @@ const ExpenseManagement: React.FC = () => {
   // 保存费用
   const saveExpense = async (values: any) => {
     try {
-      const expenseData = {
-        ...values,
-        trip_id: selectedTrip?.id,
-        expense_date: values.date.format('YYYY-MM-DD'),
-        currency: 'CNY'
+      // 构建费用数据，移除不需要的字段，确保格式正确
+      let expenseData: any = {
+        amount: values.amount,
+        category: values.category,
+        description: values.description || '',
+        currency: 'CNY',
+        location: values.location || null,
+        payment_method: values.payment_method || null,
+        receipt_image: values.receipt_image || null,
+        is_shared: values.is_shared || false,
+        shared_with: values.shared_with || [],
+        my_share: values.my_share || null,
+        notes: values.notes || null,
+        tags: values.tags || [],
+        // 日期格式：转换为 ISO 格式字符串，后端会自动解析为 datetime
+        expense_date: values.date ? values.date.format('YYYY-MM-DD') + 'T00:00:00' : null,
+        // 关联节点ID - 如果字段存在（包括 null），则包含在请求中
+        // undefined 表示字段未修改（更新时），null 表示清空关联（创建或更新时）
+        itinerary_item_id: 'itinerary_item_id' in values ? (values.itinerary_item_id || null) : undefined
       };
 
+      // 数据清理：移除undefined，但保留null和空字符串（对于可选字段）
+      // 特别注意：itinerary_item_id 需要保留 null 值（表示清空关联）
+      const cleanedData: any = {};
+      Object.keys(expenseData).forEach(key => {
+        const value = expenseData[key];
+        // 只移除undefined，保留其他值（包括null和空字符串）
+        if (value !== undefined) {
+          cleanedData[key] = value;
+        }
+      });
+      
+      // 确保必填字段有默认值
+      if (cleanedData.description === undefined) {
+        cleanedData.description = '';
+      }
+      if (cleanedData.currency === undefined) {
+        cleanedData.currency = 'CNY';
+      }
+      if (cleanedData.is_shared === undefined) {
+        cleanedData.is_shared = false;
+      }
+      if (cleanedData.shared_with === undefined) {
+        cleanedData.shared_with = [];
+      }
+      if (cleanedData.tags === undefined) {
+        cleanedData.tags = [];
+      }
+      
+      expenseData = cleanedData;
+
       if (editingExpense) {
-        await ApiService.put(`/expenses/${editingExpense.id}`, expenseData);
+        // 更新费用时使用正确的路径
+        await ApiService.put(`/budgets/expenses/${editingExpense.id}`, expenseData);
         message.success('费用更新成功');
       } else {
         if (!selectedTrip) {
           message.error('请先选择行程');
           return;
         }
+        // 创建费用时不需要在请求体中发送 trip_id，因为它在路径参数中
+        // expenseData.trip_id 会被忽略，后端会使用路径参数中的 trip_id
         await ApiService.post(`/budgets/trips/${selectedTrip.id}/expenses`, expenseData);
         message.success('费用添加成功');
       }
@@ -182,16 +271,17 @@ const ExpenseManagement: React.FC = () => {
         loadExpenses(selectedTrip.id);
         loadBudget(selectedTrip.id);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save expense:', error);
-      message.error('保存失败');
+      const errorMessage = error.response?.data?.detail || error.message || '保存失败';
+      message.error(errorMessage);
     }
   };
 
   // 删除费用
   const deleteExpense = async (id: string) => {
     try {
-      await ApiService.delete(`/expenses/${id}`);
+      await ApiService.delete(`/budgets/expenses/${id}`);
       message.success('费用删除成功');
       if (selectedTrip) {
         loadExpenses(selectedTrip.id);
@@ -205,11 +295,17 @@ const ExpenseManagement: React.FC = () => {
 
   // 编辑费用
   const editExpense = (expense: Expense) => {
+    console.log('Editing expense:', expense);
+    console.log('itinerary_item_id:', expense.itinerary_item_id);
     setEditingExpense(expense);
     expenseForm.setFieldsValue({
       ...expense,
-      date: dayjs(expense.expense_date)
+      date: dayjs(expense.expense_date),
+      itinerary_item_id: expense.itinerary_item_id || undefined  // 设置关联节点ID
     });
+    // 验证表单值是否正确设置
+    const formValues = expenseForm.getFieldsValue();
+    console.log('Form values after setFieldsValue:', formValues);
     setExpenseModalVisible(true);
   };
 
@@ -254,7 +350,15 @@ const ExpenseManagement: React.FC = () => {
 
   // AI费用管理
   const handleAiQuery = async () => {
-    if (!aiInput.trim() || !selectedTrip) return;
+    if (!aiInput.trim()) {
+      message.warning('请输入您的问题');
+      return;
+    }
+    
+    if (!selectedTrip) {
+      message.warning('请先选择一个行程');
+      return;
+    }
 
     setAiLoading(true);
     const userMessage = aiInput.trim();
@@ -264,38 +368,165 @@ const ExpenseManagement: React.FC = () => {
     setAiMessages(prev => [...prev, { role: 'user', content: userMessage }]);
 
     try {
-      // 发送请求到后端AI服务
+      // 发送请求到后端AI服务（AI查询需要更长的超时时间）
       const data = await ApiService.post<AIQueryResponse>('/expenses/ai/query', {
         query: userMessage,
         trip_id: selectedTrip.id,
         context: {
           trip_title: selectedTrip.title,
-          expenses: expenses,
-          budgets: budgets,
-          statistics: statistics
+          expenses: expenses || [],
+          budgets: budgets || [],
+          statistics: statistics || {
+            totalSpent: 0,
+            expenseCount: 0,
+            averageExpense: 0,
+            categoryStats: []
+          }
         }
+      }, {
+        timeout: 60000 // AI查询设置为60秒超时
       });
+      
+      console.log('AI query response:', data);
 
-      setAiMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+      // 检查响应是否有效
+      if (!data) {
+        throw new Error('AI响应格式错误');
+      }
+
+      // 如果有待确认的操作，显示确认卡片
+      // 注意：当AI触发Function Call时，response可能为空字符串，这是正常的
+      if (data.pending_action) {
+        // 如果有pending_action，即使response为空也显示确认卡片
+        // 可以显示一个默认的提示信息
+        const content = data.response || '我准备执行以下操作，请确认：';
+        setAiMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: content,
+          pendingAction: data.pending_action
+        }]);
+      } else {
+        // 如果没有pending_action，必须有response内容
+        if (!data.response || data.response.trim() === '') {
+          throw new Error('AI响应内容为空');
+        }
+        setAiMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: data.response 
+        }]);
+      }
       
       // 如果AI执行了操作，刷新数据
       if (data.action_performed) {
         loadExpenses(selectedTrip.id);
         loadBudget(selectedTrip.id);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI query failed:', error);
-      message.error('AI查询失败');
+      const errorMessage = error.response?.data?.detail || error.message || 'AI查询失败';
+      message.error(errorMessage);
       setAiMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: '抱歉，AI助手暂时无法响应，请稍后再试。' 
+        content: errorMessage || '抱歉，AI助手暂时无法响应，请稍后再试。' 
       }]);
     } finally {
       setAiLoading(false);
     }
   };
 
-  // 表格列定义
+  // 执行待确认的操作
+  const handleExecuteAction = async (action: any) => {
+    if (!selectedTrip) return;
+
+    try {
+      const result = await ApiService.post<{success: boolean, message: string, data?: any}>('/expenses/ai/execute', {
+        function_name: action.function_name,
+        arguments: action.arguments,
+        trip_id: selectedTrip.id
+      }, {
+        timeout: 60000 // AI执行操作也需要更长的超时时间
+      });
+
+      message.success(result.message || '操作执行成功');
+      
+      // 更新消息，移除待确认操作
+      setAiMessages(prev => prev.map((msg, idx) => {
+        if (idx === prev.length - 1 && msg.pendingAction) {
+          return {
+            ...msg,
+            content: msg.content + '\n\n' + (result.message || '操作执行成功'),
+            pendingAction: undefined
+          };
+        }
+        return msg;
+      }));
+      
+      // 刷新数据
+      loadExpenses(selectedTrip.id);
+      loadBudget(selectedTrip.id);
+    } catch (error: any) {
+      console.error('Execute action failed:', error);
+      message.error(error.response?.data?.detail || '操作执行失败');
+    }
+  };
+
+  // 取消待确认的操作
+  const handleCancelAction = (messageIndex: number) => {
+    setAiMessages(prev => prev.map((msg, idx) => {
+      if (idx === messageIndex && msg.pendingAction) {
+        return {
+          ...msg,
+          content: msg.content + '\n\n❌ 操作已取消',
+          pendingAction: undefined
+        };
+      }
+      return msg;
+    }));
+  };
+
+  // 获取操作名称
+  const getActionName = (functionName: string): string => {
+    const actionNames: Record<string, string> = {
+      'add_expense': '新增费用',
+      'update_expense': '修改费用',
+      'delete_expense': '删除费用',
+      'get_filtered_expenses': '获取筛选的费用列表'
+    };
+    return actionNames[functionName] || functionName;
+  };
+
+  // 格式化操作详情
+  const formatActionDetails = (action: any): string => {
+    try {
+      const args = JSON.parse(action.arguments);
+      const details: string[] = [];
+      
+      if (action.function_name === 'add_expense') {
+        details.push(`分类：${EXPENSE_CATEGORIES.find(c => c.value === args.category)?.label || args.category}`);
+        details.push(`金额：¥${args.amount?.toFixed(2) || 0}`);
+        details.push(`描述：${args.description || ''}`);
+        if (args.location) details.push(`地点：${args.location}`);
+        if (args.expense_date) details.push(`日期：${args.expense_date}`);
+      } else if (action.function_name === 'update_expense') {
+        details.push(`费用ID：${args.expense_id}`);
+        if (args.category) details.push(`分类：${EXPENSE_CATEGORIES.find(c => c.value === args.category)?.label || args.category}`);
+        if (args.amount) details.push(`金额：¥${args.amount.toFixed(2)}`);
+        if (args.description) details.push(`描述：${args.description}`);
+      } else if (action.function_name === 'delete_expense') {
+        details.push(`费用ID：${args.expense_id}`);
+      } else if (action.function_name === 'get_filtered_expenses') {
+        if (args.category) details.push(`分类：${EXPENSE_CATEGORIES.find(c => c.value === args.category)?.label || args.category}`);
+        if (args.start_date) details.push(`开始日期：${args.start_date}`);
+        if (args.end_date) details.push(`结束日期：${args.end_date}`);
+      }
+      
+      return details.join('\n') || JSON.stringify(args, null, 2);
+    } catch (e) {
+      return action.arguments;
+    }
+  };
+
+  // 表格列定义 - 顺序：日期、分类、金额、关联节点、描述、操作
   const columns = [
     {
       title: '日期',
@@ -315,12 +546,6 @@ const ExpenseManagement: React.FC = () => {
       }
     },
     {
-      title: '描述',
-      dataIndex: 'description',
-      key: 'description',
-      ellipsis: true
-    },
-    {
       title: '金额',
       dataIndex: 'amount',
       key: 'amount',
@@ -329,10 +554,49 @@ const ExpenseManagement: React.FC = () => {
       sorter: (a: Expense, b: Expense) => a.amount - b.amount
     },
     {
-      title: '地点',
-      dataIndex: 'location',
-      key: 'location',
-      width: 120,
+      title: '关联节点',
+      key: 'itinerary_item',
+      width: 200,
+      ellipsis: true,
+      render: (_: any, record: Expense) => {
+        // 调试信息
+        console.log('Rendering itinerary_item for expense:', record.id, 'itinerary_item_id:', record.itinerary_item_id);
+        console.log('selectedTrip?.itineraries:', selectedTrip?.itineraries);
+        
+        if (!record.itinerary_item_id) {
+          console.log('No itinerary_item_id for expense:', record.id);
+          return <span style={{ color: '#999' }}>-</span>;
+        }
+        
+        if (!selectedTrip?.itineraries || selectedTrip.itineraries.length === 0) {
+          console.log('No itineraries in selectedTrip');
+          return <span style={{ color: '#999' }}>-</span>;
+        }
+        
+        // 查找关联的节点
+        for (const itinerary of selectedTrip.itineraries) {
+          if (!itinerary.items || itinerary.items.length === 0) {
+            continue;
+          }
+          const item = itinerary.items.find((it: any) => it.id === record.itinerary_item_id);
+          if (item) {
+            console.log('Found item:', item.name, 'in day', itinerary.day_number);
+            return (
+              <Tooltip title={`第${itinerary.day_number}天 - ${item.name}`}>
+                <span>{item.name}</span>
+              </Tooltip>
+            );
+          }
+        }
+        console.log('Item not found for itinerary_item_id:', record.itinerary_item_id);
+        return <span style={{ color: '#999' }}>-</span>;
+      }
+    },
+    {
+      title: '描述',
+      dataIndex: 'description',
+      key: 'description',
+      width: 150,
       ellipsis: true
     },
     {
@@ -384,17 +648,30 @@ const ExpenseManagement: React.FC = () => {
         <Space wrap>
           <Text strong>选择行程：</Text>
           <Select
-            placeholder={trips.length === 0 ? "正在加载行程..." : "请选择行程"}
+            placeholder={tripsLoading ? "正在加载行程..." : "请选择行程"}
             style={{ width: 300 }}
             value={selectedTrip?.id}
-            loading={trips.length === 0}
-            onChange={(tripId) => {
+            loading={tripsLoading}
+            disabled={tripsLoading || trips.length === 0}
+            onChange={async (tripId) => {
+              try {
+                // 加载完整的行程详情（包含itineraries和items）
+                const tripDetail = await ApiService.get<Trip>(`/trips/${tripId}`);
+                setSelectedTrip(tripDetail || null);
+                if (tripDetail) {
+                  loadExpenses(tripDetail.id);
+                  loadBudget(tripDetail.id);
+                  navigate(`/expense-management?tripId=${tripId}`);
+                }
+              } catch (error) {
+                console.error('Failed to load trip detail:', error);
               const trip = trips.find(t => t.id === tripId);
               setSelectedTrip(trip || null);
               if (trip) {
                 loadExpenses(trip.id);
                 loadBudget(trip.id);
                 navigate(`/expense-management?tripId=${tripId}`);
+                }
               }
             }}
           >
@@ -412,11 +689,28 @@ const ExpenseManagement: React.FC = () => {
 
 
       {/* 显示加载状态或内容 */}
-      {trips.length === 0 ? (
+      {tripsLoading ? (
         <Card>
           <div style={{ textAlign: 'center', padding: '40px' }}>
+            <Spin size="large" />
+            <div style={{ marginTop: '16px' }}>
             <Text type="secondary">正在加载行程数据...</Text>
+            </div>
           </div>
+        </Card>
+      ) : trips.length === 0 ? (
+        <Card>
+          <Empty 
+            description="暂无行程数据"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          >
+            <Button 
+              type="primary" 
+              onClick={() => navigate('/trips')}
+            >
+              去创建行程
+            </Button>
+          </Empty>
         </Card>
       ) : selectedTrip ? (
         <>
@@ -426,7 +720,7 @@ const ExpenseManagement: React.FC = () => {
               <Card>
                 <Statistic
                   title="总支出"
-                  value={statistics.totalSpent}
+                  value={budgets[0]?.spent_amount !== undefined ? budgets[0].spent_amount : statistics.totalSpent}
                   prefix="¥"
                   precision={2}
                 />
@@ -455,27 +749,57 @@ const ExpenseManagement: React.FC = () => {
               <Card>
                 <Statistic
                   title="剩余预算"
-                  value={selectedTrip.budget ? selectedTrip.budget - statistics.totalSpent : 0}
+                  value={(() => {
+                    // 优先使用后端返回的准确值
+                    if (budgets[0]?.remaining_budget !== null && budgets[0]?.remaining_budget !== undefined) {
+                      return budgets[0].remaining_budget;
+                    }
+                    // 如果后端没有返回 remaining_budget，使用后端返回的 spent_amount 计算（更准确）
+                    if (budgets[0]?.spent_amount !== undefined && selectedTrip?.budget_total) {
+                      return selectedTrip.budget_total - budgets[0].spent_amount;
+                    }
+                    // 最后回退到使用前端统计（基于筛选后的费用，可能不准确）
+                    if (selectedTrip?.budget_total) {
+                      return selectedTrip.budget_total - statistics.totalSpent;
+                    }
+                    return 0;
+                  })()}
                   prefix="¥"
                   precision={2}
-                  valueStyle={{ color: selectedTrip.budget && selectedTrip.budget - statistics.totalSpent < 0 ? '#cf1322' : '#3f8600' }}
+                  valueStyle={{ 
+                    color: (() => {
+                      // 计算剩余预算值
+                      const remaining = budgets[0]?.remaining_budget !== null && budgets[0]?.remaining_budget !== undefined
+                        ? budgets[0].remaining_budget
+                        : (budgets[0]?.spent_amount !== undefined && selectedTrip?.budget_total
+                          ? selectedTrip.budget_total - budgets[0].spent_amount
+                          : (selectedTrip?.budget_total ? selectedTrip.budget_total - statistics.totalSpent : 0));
+                      return remaining < 0 ? '#cf1322' : '#3f8600';
+                    })()
+                  }}
                 />
               </Card>
             </Col>
           </Row>
 
           {/* 预算进度 */}
-          {selectedTrip.budget && (
+          {selectedTrip.budget_total && (
             <Card style={{ marginBottom: '24px' }}>
               <Title level={4}>预算进度</Title>
               <Progress
-                percent={Math.min((statistics.totalSpent / selectedTrip.budget) * 100, 100)}
-                status={statistics.totalSpent > selectedTrip.budget ? 'exception' : 'active'}
+                percent={(() => {
+                  const spent = budgets[0]?.spent_amount !== undefined ? budgets[0].spent_amount : statistics.totalSpent;
+                  return Math.min((spent / selectedTrip.budget_total) * 100, 100);
+                })()}
+                status={(() => {
+                  const spent = budgets[0]?.spent_amount !== undefined ? budgets[0].spent_amount : statistics.totalSpent;
+                  return spent > selectedTrip.budget_total ? 'exception' : 'active';
+                })()}
                 format={(percent) => `${percent?.toFixed(1)}%`}
               />
               <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                <Text type="secondary">已用：¥{statistics.totalSpent.toFixed(2)}</Text>
-                <Text type="secondary">预算：¥{selectedTrip.budget.toFixed(2)}</Text>
+                <Text type="secondary">已用：¥{((budgets[0]?.spent_amount !== undefined ? budgets[0].spent_amount : statistics.totalSpent).toFixed(2))}</Text>
+                <Text type="secondary">预算：¥{selectedTrip.budget_total.toFixed(2)}</Text>
               </div>
             </Card>
           )}
@@ -522,12 +846,6 @@ const ExpenseManagement: React.FC = () => {
                   >
                     AI费用助手
                   </Button>
-                  <Button
-                    icon={<DownloadOutlined />}
-                    onClick={() => message.info('导出功能开发中')}
-                  >
-                    导出数据
-                  </Button>
                 </Space>
               </Col>
               <Col>
@@ -571,9 +889,10 @@ const ExpenseManagement: React.FC = () => {
         </>
       ) : (
         <Card>
-          <div style={{ textAlign: 'center', padding: '40px' }}>
-            <Text type="secondary">请选择一个行程以查看和管理费用</Text>
-          </div>
+          <Empty 
+            description="请选择一个行程以查看和管理费用"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
         </Card>
       )}
 
@@ -621,6 +940,46 @@ const ExpenseManagement: React.FC = () => {
               formatter={(value) => `¥ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
             />
           </Form.Item>
+          
+          {/* 节点关联 - 新增 */}
+          <Form.Item
+            name="itinerary_item_id"
+            label="关联行程节点（可选）"
+            tooltip="将此费用关联到具体的行程节点，例如景点门票、餐厅账单等。选择节点后，费用日期将自动设置为节点所在日期。"
+          >
+            <Select
+              placeholder="选择关联的行程节点"
+              allowClear
+              showSearch
+              optionFilterProp="children"
+              onChange={(value) => {
+                console.log('itinerary_item_id changed to:', value);
+                // 当选择节点时，自动设置费用日期为节点所在日期
+                if (value && selectedTrip?.itineraries) {
+                  for (const itinerary of selectedTrip.itineraries) {
+                    const item = itinerary.items?.find((it: any) => it.id === value);
+                    if (item && itinerary.date) {
+                      // 设置费用日期为节点所在日期
+                      expenseForm.setFieldsValue({
+                        date: dayjs(itinerary.date)
+                      });
+                      break;
+                    }
+                  }
+                }
+              }}
+            >
+              {selectedTrip?.itineraries?.map((itinerary: any) => (
+                <Select.OptGroup key={itinerary.id} label={`第${itinerary.day_number}天 - ${itinerary.title || ''} ${itinerary.date ? `(${dayjs(itinerary.date).format('YYYY-MM-DD')})` : ''}`}>
+                  {itinerary.items?.map((item: any) => (
+                    <Option key={item.id} value={item.id}>
+                      {item.name} {item.category && `(${item.category})`}
+                    </Option>
+                  ))}
+                </Select.OptGroup>
+              ))}
+            </Select>
+          </Form.Item>
 
           <Form.Item
             name="description"
@@ -635,7 +994,18 @@ const ExpenseManagement: React.FC = () => {
             label="日期"
             rules={[{ required: true, message: '请选择日期' }]}
           >
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker 
+              style={{ width: '100%' }}
+              disabledDate={(current) => {
+                // 限制日期选择范围在行程的开始日期和结束日期之间（含开始和结束日期）
+                if (!selectedTrip?.start_date || !selectedTrip?.end_date) {
+                  return false;
+                }
+                const startDate = dayjs(selectedTrip.start_date);
+                const endDate = dayjs(selectedTrip.end_date);
+                return current && (current.isBefore(startDate, 'day') || current.isAfter(endDate, 'day'));
+              }}
+            />
           </Form.Item>
 
           <Form.Item
@@ -697,6 +1067,56 @@ const ExpenseManagement: React.FC = () => {
                     border: `1px solid ${msg.role === 'user' ? '#91d5ff' : '#b7eb8f'}`
                   }}>
                     <MarkdownRenderer content={msg.content} />
+                    
+                    {/* 待确认的操作卡片 */}
+                    {msg.pendingAction && (
+                      <Card 
+                        size="small" 
+                        style={{ 
+                          marginTop: '12px', 
+                          border: '1px solid #ffa940',
+                          background: '#fff7e6'
+                        }}
+                        title={
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ color: '#fa8c16' }}>⚠️ 待确认操作</span>
+                          </div>
+                        }
+                      >
+                        <div style={{ marginBottom: '12px' }}>
+                          <Text strong>操作类型：</Text>
+                          <Text>{getActionName(msg.pendingAction.function_name)}</Text>
+                        </div>
+                        <div style={{ marginBottom: '12px' }}>
+                          <Text strong>操作详情：</Text>
+                          <div style={{ 
+                            marginTop: '8px', 
+                            padding: '8px', 
+                            background: '#fff', 
+                            borderRadius: '4px',
+                            fontFamily: 'monospace',
+                            fontSize: '12px'
+                          }}>
+                            {formatActionDetails(msg.pendingAction)}
+                          </div>
+                        </div>
+                        <Space>
+                          <Button 
+                            type="primary" 
+                            size="small"
+                            onClick={() => handleExecuteAction(msg.pendingAction)}
+                          >
+                            确认执行
+                          </Button>
+                          <Button 
+                            size="small"
+                            onClick={() => handleCancelAction(index)}
+                          >
+                            取消
+                          </Button>
+                        </Space>
+                      </Card>
+                    )}
                   </div>
                 </div>
               ))
@@ -715,13 +1135,23 @@ const ExpenseManagement: React.FC = () => {
               onChange={(e) => setAiInput(e.target.value)}
               placeholder="请输入您的问题，例如：分析我的交通费用支出情况"
               onPressEnter={handleAiQuery}
-              disabled={aiLoading}
+              disabled={aiLoading || isProcessing}
+              suffix={
+                <Button
+                  type="text"
+                  icon={<AudioOutlined />}
+                  onClick={toggleRecording}
+                  loading={isProcessing}
+                  danger={isRecording}
+                  style={{ border: 'none', padding: 0 }}
+                />
+              }
             />
             <Button
               type="primary"
               onClick={handleAiQuery}
               loading={aiLoading}
-              disabled={!aiInput.trim()}
+              disabled={!aiInput.trim() || isProcessing}
             >
               发送
             </Button>

@@ -1,7 +1,7 @@
 """API v1 router aggregation"""
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, chat, voice, trip, budget, expenses
+from app.api.v1.endpoints import auth, chat, voice, trip, budget, expenses, map as map_endpoints
 
 # Create main API router
 api_router = APIRouter()
@@ -46,6 +46,13 @@ api_router.include_router(
     expenses.router,
     prefix="/expenses",
     tags=["费用管理 Expenses"]
+)
+
+# Include map routes
+api_router.include_router(
+    map_endpoints.router,
+    prefix="/map",
+    tags=["地图服务 Map"]
 )
 
 # Future: Include other route modules

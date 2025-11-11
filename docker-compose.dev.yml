@@ -72,14 +72,14 @@ services:
       dockerfile: Dockerfile
     container_name: travel-planner-frontend
     ports:
-      - "80:80"
+      - "28810:80"
     depends_on:
       - backend
     networks:
       - app-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 30s
       timeout: 10s
       retries: 3

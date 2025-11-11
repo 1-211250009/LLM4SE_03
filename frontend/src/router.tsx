@@ -4,7 +4,6 @@ import Layout from './components/layout/Layout';
 import Home from './pages/Home/Home';
 import Login from './pages/Login/Login';
 import Register from './pages/Register/Register';
-import TripPlanning from './pages/TripPlanning/TripPlanning';
 import TripDetail from './pages/TripDetail/TripDetail';
 import TripManagement from './pages/TripManagement/TripManagement';
 import ExpenseManagement from './pages/ExpenseManagement/ExpenseManagement';
@@ -32,14 +31,15 @@ export const router = createBrowserRouter([
         index: true,
         element: <Home />,
       },
-      {
-        path: 'trip-planning',
-        element: (
-          <ProtectedRoute>
-            <TripPlanning />
-          </ProtectedRoute>
-        ),
-      },
+      // 行程规划页面已隐藏，但保留代码以便将来使用
+      // {
+      //   path: 'trip-planning',
+      //   element: (
+      //     <ProtectedRoute>
+      //       <TripPlanning />
+      //     </ProtectedRoute>
+      //   ),
+      // },
       {
         path: 'trips',
         element: (
@@ -49,7 +49,7 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'trip/:id',
+        path: 'trip/:tripId',
         element: (
           <ProtectedRoute>
             <TripDetail />

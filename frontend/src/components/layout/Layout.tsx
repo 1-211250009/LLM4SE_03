@@ -1,15 +1,10 @@
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { useState } from 'react';
 import Header from './Header';
 import Footer from './Footer';
 
 const Layout = () => {
-  const location = useLocation();
   const [isChatOpen, setIsChatOpen] = useState(false);
-
-  const handleToggleChat = () => {
-    setIsChatOpen(!isChatOpen);
-  };
 
   return (
     <div style={{ 
@@ -18,8 +13,9 @@ const Layout = () => {
       flexDirection: 'column',
       background: '#f9fafb'
     }}>
+      {/* 行程规划页面已隐藏，但保留代码以便将来使用 */}
       <Header 
-        onToggleChat={location.pathname === '/trip-planning' ? handleToggleChat : undefined}
+        onToggleChat={undefined} // location.pathname === '/trip-planning' ? handleToggleChat : undefined
         isChatOpen={isChatOpen}
       />
       <main style={{ flex: 1, minHeight: 0 }}>

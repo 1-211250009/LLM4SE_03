@@ -81,3 +81,6 @@ alembic/versions/*.py
 tmp/
 *.tmp
 
+# Uploaded files
+uploads/
+

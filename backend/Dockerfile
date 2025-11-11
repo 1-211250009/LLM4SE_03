@@ -9,11 +9,13 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# 安装系统依赖
+# 安装系统依赖（包括ffmpeg用于音频转换）
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     libpq-dev \
+    ffmpeg \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装Poetry
@@ -30,6 +32,9 @@ RUN poetry lock && poetry install --only=main
 
 # 复制应用代码
 COPY . .
+
+# 创建必要的目录
+RUN mkdir -p uploads/audio uploads/avatars
 
 # 创建非root用户
 RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app

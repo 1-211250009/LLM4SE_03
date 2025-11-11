@@ -66,7 +66,8 @@ class DeepSeekLLMService:
             payload["tool_choice"] = "auto"  # 让模型自动决定是否使用工具
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            # 增加超时时间到60秒，因为AI响应可能需要更长时间
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(url, headers=headers, json=payload)
                 response.raise_for_status()
                 

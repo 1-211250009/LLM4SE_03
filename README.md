@@ -13,6 +13,7 @@
 ## 📚 文档导航
 
 ### 核心文档
+- **[Docker运行指南](DOCKER_RUN.md)** - 🐳 **Docker镜像下载和运行完整指南（推荐）**
 - **[技术设计文档](doc/TECHNICAL_DESIGN.md)** - 完整的技术栈设计和架构说明
 - **[项目结构说明](doc/PROJECT_STRUCTURE.md)** - 详细的目录结构和文件组织
 - **[快速开始指南](doc/QUICK_START.md)** - 从零开始搭建开发环境
@@ -37,31 +38,54 @@
 - Docker Compose >= 2.0.0
 - Git
 
-### 一键启动（开发环境）
+### 🎯 超快速启动（使用启动脚本）
 
 ```bash
-# 克隆项目
+# 1. 克隆项目
 git clone git@github.com:1-211250009/LLM4SE_03.git
 cd LLM4SE_03
 
-# 启动数据库服务
-docker-compose -f docker-compose.dev.yml up -d
+# 2. 使用启动脚本（开发环境）
+./start.sh dev
 
-# 安装并启动后端（Python + FastAPI）
+# 3. 按照提示配置API密钥后，在新终端启动后端和前端
+# 见脚本输出的详细说明
+```
+
+或使用Docker生产环境：
+```bash
+./start.sh prod
+```
+
+### 📖 详细启动步骤（开发环境）
+
+```bash
+# 1. 克隆项目
+git clone git@github.com:1-211250009/LLM4SE_03.git
+cd LLM4SE_03
+
+# 2. 启动数据库服务
+docker-compose -f docker-compose.dev.yml up -d postgres redis
+
+# 3. 配置并启动后端（Python + FastAPI）
 cd backend
-poetry install
-cp ENV_TEMPLATE.txt .env  # 配置环境变量
+pip install -r requirements.txt
+cp ENV_TEMPLATE.txt .env  # 配置环境变量（必需填入API密钥）
 alembic upgrade head  # 数据库迁移
-poetry run uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000
 
-# 安装并启动前端（新终端）
+# 4. 配置并启动前端（新终端）
 cd frontend
 npm install
 cp ENV_TEMPLATE.txt .env  # 配置环境变量
 npm run dev
 ```
 
-访问 http://localhost:5173 查看前端应用，http://localhost:8000/docs 查看API文档。
+**访问应用**:
+- 前端: http://localhost:5173
+- 后端API文档: http://localhost:8000/docs
+
+**完整运行指南**: 查看 [HOW_TO_RUN.md](HOW_TO_RUN.md)
 
 ### 生产环境部署
 
@@ -280,12 +304,71 @@ npm run test:integration  # 运行集成测试
 
 ## 🐳 Docker部署
 
+### 方式一：使用预构建镜像（推荐）
+
+项目已提供预构建的 Docker 镜像，可直接下载使用：
+
+#### 1. 拉取镜像
+
+```bash
+# 拉取后端镜像
+docker pull registry.cn-hangzhou.aliyuncs.com/your-namespace/llm4se03-backend:latest
+
+# 拉取前端镜像
+docker pull registry.cn-hangzhou.aliyuncs.com/your-namespace/llm4se03-frontend:latest
+```
+
+> **注意**: 请将 `your-namespace` 替换为实际的阿里云镜像仓库命名空间。
+
+#### 2. 配置环境变量
+
+创建 `.env` 文件：
+
+```bash
+# API密钥配置（必需）
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+BAIDU_MAPS_API_KEY=your_baidu_maps_api_key_here
+XFYUN_APP_ID=your_xfyun_app_id_here
+XFYUN_API_KEY=your_xfyun_api_key_here
+XFYUN_API_SECRET=your_xfyun_api_secret_here
+```
+
+#### 3. 修改 docker-compose.prod.yml
+
+编辑 `docker-compose.prod.yml`，将镜像地址替换为您的实际镜像地址。
+
+#### 4. 启动服务
+
+```bash
+# 使用生产环境配置启动
+docker-compose -f docker-compose.prod.yml --env-file .env up -d
+
+# 初始化数据库
+docker-compose -f docker-compose.prod.yml exec backend alembic upgrade head
+
+# 查看服务状态
+docker-compose -f docker-compose.prod.yml ps
+
+# 查看日志
+docker-compose -f docker-compose.prod.yml logs -f
+```
+
+#### 5. 访问应用
+
+- **前端**: http://localhost
+- **后端API文档**: http://localhost:8000/docs
+
+### 方式二：本地构建镜像
+
 ```bash
 # 构建镜像
 docker-compose build
 
 # 启动服务
 docker-compose up -d
+
+# 初始化数据库
+docker-compose exec backend alembic upgrade head
 
 # 查看日志
 docker-compose logs -f
@@ -294,7 +377,23 @@ docker-compose logs -f
 docker-compose down
 ```
 
-Docker镜像已发布到阿里云容器镜像仓库，可直接拉取使用。
+### 📖 详细Docker运行指南
+
+完整的Docker部署说明请查看 [DOCKER_RUN.md](DOCKER_RUN.md)，包括：
+- 镜像下载地址
+- 详细配置说明
+- 故障排查指南
+- 数据持久化方案
+- 安全建议
+
+### 🏷️ Docker镜像
+
+项目提供以下Docker镜像：
+
+- **后端镜像**: `registry.cn-hangzhou.aliyuncs.com/your-namespace/llm4se03-backend:latest`
+- **前端镜像**: `registry.cn-hangzhou.aliyuncs.com/your-namespace/llm4se03-frontend:latest`
+
+镜像已发布到阿里云容器镜像仓库，支持多架构（amd64/arm64）。
 
 ## 🤝 贡献
 
