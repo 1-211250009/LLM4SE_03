@@ -1,0 +1,43 @@
+# Docker 环境变量配置示例
+# 复制此文件为 .env 并填入真实的 API 密钥
+# 注意：.env 文件已被 .gitignore 忽略，不会被提交到 git
+
+# ===== 后端配置 =====
+
+# JWT 密钥（生产环境请更改）
+SECRET_KEY=your-secret-key-here-change-in-production-at-least-32-characters
+
+# DeepSeek API 密钥（必需）
+# 申请地址: https://platform.deepseek.com/
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+
+# 百度地图 API 密钥（必需）
+# 申请地址: https://lbsyun.baidu.com/
+# 注意：后端使用 BAIDU_MAP_AK 和 BAIDU_MAP_SK，前端使用 VITE_BAIDU_MAPS_API_KEY
+BAIDU_MAP_AK=your_baidu_map_ak_here
+BAIDU_MAP_SK=your_baidu_map_sk_here
+# 以下变量用于 docker-compose.yml（如果后端也需要 JavaScript API Key，可以设置）
+BAIDU_MAPS_API_KEY=your_baidu_maps_api_key_here
+
+# 科大讯飞 API 密钥（必需，用于语音识别）
+# 申请地址: https://www.xfyun.cn/
+XFYUN_APP_ID=your_xfyun_app_id_here
+XFYUN_API_KEY=your_xfyun_api_key_here
+XFYUN_API_SECRET=your_xfyun_api_secret_here
+
+# ===== 前端配置 =====
+
+# API 基础 URL
+VITE_API_BASE_URL=http://localhost:8000
+
+# 百度地图 API Key（前端使用）
+VITE_BAIDU_MAPS_API_KEY=your_baidu_maps_api_key_here
+
+# 科大讯飞配置（前端使用）
+VITE_XUNFEI_APP_ID=your_xfyun_app_id_here
+VITE_XUNFEI_API_KEY=your_xfyun_api_key_here
+VITE_XUNFEI_API_SECRET=your_xfyun_api_secret_here
+
+# 语音功能开关（可选）
+# 设置为 true 启用语音功能，需要配置科大讯飞 API 密钥
+VITE_ENABLE_VOICE=false
