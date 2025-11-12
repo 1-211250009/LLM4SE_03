@@ -31,7 +31,7 @@ class ExpenseAIService:
     ) -> Dict[str, Any]:
         """处理自然语言查询，返回响应和待确认的操作"""
         try:
-            # 构建系统提示
+        # 构建系统提示
             system_prompt = self._build_system_prompt(user_id, trip_id, context)
             
             # 调用LLM处理查询
@@ -42,7 +42,7 @@ class ExpenseAIService:
                 ],
                 tools=self._get_available_tools()
             )
-            
+        
             # 检查响应是否有效
             if not response:
                 return {
@@ -52,32 +52,32 @@ class ExpenseAIService:
             
             # 如果有工具调用，返回待确认的操作
             if response.get('tool_calls'):
-                tool_call = response['tool_calls'][0]  # 取第一个工具调用
-                
-                # 获取AI的回复内容，如果为空则使用默认提示
-                content = response.get('content', '')
-                if not content or content.strip() == '':
-                    # 根据不同的工具调用，生成友好的提示信息
-                    function_name = tool_call['function']['name']
-                    action_names = {
-                        'add_expense': '我准备为您添加费用记录',
-                        'update_expense': '我准备为您更新费用记录',
-                        'delete_expense': '我准备为您删除费用记录',
-                        'get_filtered_expenses': '我准备为您查询费用记录',
-                        'get_expense_summary': '我准备为您获取费用统计',
-                        'get_category_stats': '我准备为您获取分类统计',
-                        'analyze_expense_trends': '我准备为您分析费用趋势'
+                    tool_call = response['tool_calls'][0]  # 取第一个工具调用
+                    
+                    # 获取AI的回复内容，如果为空则使用默认提示
+                    content = response.get('content', '')
+                    if not content or content.strip() == '':
+                        # 根据不同的工具调用，生成友好的提示信息
+                        function_name = tool_call['function']['name']
+                        action_names = {
+                            'add_expense': '我准备为您添加费用记录',
+                            'update_expense': '我准备为您更新费用记录',
+                            'delete_expense': '我准备为您删除费用记录',
+                            'get_filtered_expenses': '我准备为您查询费用记录',
+                            'get_expense_summary': '我准备为您获取费用统计',
+                            'get_category_stats': '我准备为您获取分类统计',
+                            'analyze_expense_trends': '我准备为您分析费用趋势'
+                        }
+                        content = action_names.get(function_name, '我准备执行以下操作，请确认：')
+                    
+                    return {
+                        'content': content,
+                        'pending_action': {
+                            'id': tool_call.get('id'),
+                            'function_name': tool_call['function']['name'],
+                            'arguments': tool_call['function']['arguments']
+                        }
                     }
-                    content = action_names.get(function_name, '我准备执行以下操作，请确认：')
-                
-                return {
-                    'content': content,
-                    'pending_action': {
-                        'id': tool_call.get('id'),
-                        'function_name': tool_call['function']['name'],
-                        'arguments': tool_call['function']['arguments']
-                    }
-                }
             
             # 返回普通响应
             content = response.get('content', '')
