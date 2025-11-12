@@ -42,22 +42,24 @@ services:
 
   # 后端服务
   backend:
-    # 使用预构建镜像（请替换为您的镜像地址）
-    image: registry.cn-hangzhou.aliyuncs.com/your-namespace/llm4se03-backend:latest
+    # 使用预构建镜像
+    image: crpi-xwthsolplptwao7o.cn-shanghai.personal.cr.aliyuncs.com/haoxiangyan/llm4se03-backend:latest
     container_name: travel-planner-backend
     environment:
       - DATABASE_URL=postgresql://admin:password@postgres:5432/travel_planner
       - REDIS_URL=redis://redis:6379
-      - SECRET_KEY=your-secret-key-here-change-in-production
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here-change-in-production}
       - ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
       - CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://localhost","http://localhost:80","http://localhost:28810"]
       # API密钥配置（必需）
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
-      - BAIDU_MAPS_API_KEY=${BAIDU_MAPS_API_KEY}
-      - XFYUN_APP_ID=${XFYUN_APP_ID}
-      - XFYUN_API_KEY=${XFYUN_API_KEY}
-      - XFYUN_API_SECRET=${XFYUN_API_SECRET}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - BAIDU_MAPS_API_KEY=${BAIDU_MAPS_API_KEY:-}
+      - BAIDU_MAP_AK=${BAIDU_MAP_AK:-}
+      - BAIDU_MAP_SK=${BAIDU_MAP_SK:-}
+      - XFYUN_APP_ID=${XFYUN_APP_ID:-}
+      - XFYUN_API_KEY=${XFYUN_API_KEY:-}
+      - XFYUN_API_SECRET=${XFYUN_API_SECRET:-}
     ports:
       - "8000:8000"
     depends_on:
@@ -78,11 +80,15 @@ services:
 
   # 前端服务
   frontend:
-    # 使用预构建镜像（请替换为您的镜像地址）
-    image: registry.cn-hangzhou.aliyuncs.com/your-namespace/llm4se03-frontend:latest
+    # 使用预构建镜像
+    image: crpi-xwthsolplptwao7o.cn-shanghai.personal.cr.aliyuncs.com/haoxiangyan/llm4se03-frontend:latest
     container_name: travel-planner-frontend
     environment:
-      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8000}
+      - VITE_BAIDU_MAPS_API_KEY=${VITE_BAIDU_MAPS_API_KEY:-}
+      - VITE_XUNFEI_APP_ID=${VITE_XUNFEI_APP_ID:-}
+      - VITE_XUNFEI_API_KEY=${VITE_XUNFEI_API_KEY:-}
+      - VITE_XUNFEI_API_SECRET=${VITE_XUNFEI_API_SECRET:-}
     ports:
       - "28810:80"
     depends_on:

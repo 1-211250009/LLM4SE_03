@@ -29,17 +29,13 @@ docker pull crpi-xwthsolplptwao7o.cn-shanghai.personal.cr.aliyuncs.com/haoxiangy
 cp ENV_EXAMPLE .env
 # 编辑 .env 文件，填入必需的 API 密钥（DEEPSEEK_API_KEY、BAIDU_MAP_AK、BAIDU_MAP_SK 等）
 
-# 3. 修改 docker-compose.prod.yml 中的镜像地址
-将第46行后端镜像地址改为：crpi-xwthsolplptwao7o.cn-shanghai.personal.cr.aliyuncs.com/haoxiangyan/llm4se03-backend:latest
-将第82行前端镜像地址改为：crpi-xwthsolplptwao7o.cn-shanghai.personal.cr.aliyuncs.com/haoxiangyan/llm4se03-frontend:latest
-
-# 4. 启动服务
+# 3. 启动服务（使用 docker-compose.prod.yml）
 docker-compose -f docker-compose.prod.yml --env-file .env up -d
 
-# 5. 初始化数据库
+# 4. 初始化数据库
 docker-compose -f docker-compose.prod.yml exec backend alembic upgrade head
 
-# 6. 访问应用
+# 5. 访问应用
 # 前端: http://localhost:28810
 # 后端API: http://localhost:8000
 # API文档: http://localhost:8000/docs
@@ -52,7 +48,7 @@ docker-compose -f docker-compose.prod.yml exec backend alembic upgrade head
 cp ENV_EXAMPLE .env
 # 编辑 .env 文件，填入必需的 API 密钥
 
-# 2. 启动服务（会自动构建镜像）
+# 2. 启动服务（使用 docker-compose.yml，会自动构建镜像）
 docker-compose up -d --build
 
 # 3. 初始化数据库
@@ -65,6 +61,24 @@ docker-compose exec backend alembic upgrade head
 ```
 
 ### 常用命令
+
+**如果使用方式一（预构建镜像），所有命令需要加上 `-f docker-compose.prod.yml`：**
+
+```bash
+# 查看服务状态
+docker-compose -f docker-compose.prod.yml ps
+
+# 查看日志
+docker-compose -f docker-compose.prod.yml logs -f
+
+# 停止服务
+docker-compose -f docker-compose.prod.yml down
+
+# 重启服务
+docker-compose -f docker-compose.prod.yml restart
+```
+
+**如果使用方式二（源码构建），直接使用默认命令：**
 
 ```bash
 # 查看服务状态
